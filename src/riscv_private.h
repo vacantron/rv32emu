@@ -147,6 +147,8 @@ struct riscv_internal {
      */
     bool is_interrupted;
 #endif
+
+    rv_insn_t *next_insn; /* next instruction which going to be invoked */
 };
 
 /* sign extend a 16 bit value */

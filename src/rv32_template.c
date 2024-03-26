@@ -177,7 +177,10 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = taken;
+            return true;
         }
         goto end_op;
     },
@@ -200,49 +203,57 @@ RVOP(
  * table to link he indirect jump targets.
  */
 #if !RV32_HAS(JIT)
-#define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                               \
-    /* lookup branch history table */                                         \
-    for (int i = 0; i < HISTORY_SIZE; i++) {                                  \
-        if (ir->branch_table->PC[i] == PC) {                                  \
-            MUST_TAIL return ir->branch_table->target[i]->impl(               \
-                rv, ir->branch_table->target[i], cycle, PC);                  \
-        }                                                                     \
-    }                                                                         \
-    block_t *block = block_find(&rv->block_map, PC);                          \
-    if (block) {                                                              \
-        /* update branch history table */                                     \
-        ir->branch_table->PC[ir->branch_table->idx] = PC;                     \
-        ir->branch_table->target[ir->branch_table->idx] = block->ir_head;     \
-        ir->branch_table->idx = (ir->branch_table->idx + 1) % HISTORY_SIZE;   \
-        MUST_TAIL return block->ir_head->impl(rv, block->ir_head, cycle, PC); \
+#define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                             \
+    /* lookup branch history table */                                       \
+    for (int i = 0; i < HISTORY_SIZE; i++) {                                \
+        if (ir->branch_table->PC[i] == PC) {                                \
+            rv->PC = PC;                                                    \
+            rv->csr_cycle = cycle;                                          \
+            rv->next_insn = ir->branch_table->target[i];                    \
+            return true;                                                    \
+        }                                                                   \
+    }                                                                       \
+    block_t *block = block_find(&rv->block_map, PC);                        \
+    if (block) {                                                            \
+        /* update branch history table */                                   \
+        ir->branch_table->PC[ir->branch_table->idx] = PC;                   \
+        ir->branch_table->target[ir->branch_table->idx] = block->ir_head;   \
+        ir->branch_table->idx = (ir->branch_table->idx + 1) % HISTORY_SIZE; \
+        rv->PC = PC;                                                        \
+        rv->csr_cycle = cycle;                                              \
+        rv->next_insn = block->ir_head;                                     \
+        return true;                                                        \
     }
 #else
-#define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                               \
-    block_t *block = cache_get(rv->block_cache, PC, true);                    \
-    if (block) {                                                              \
-        for (int i = 0; i < HISTORY_SIZE; i++) {                              \
-            if (ir->branch_table->PC[i] == PC) {                              \
-                ir->branch_table->times[i]++;                                 \
-                if (cache_hot(rv->block_cache, PC))                           \
-                    goto end_op;                                              \
-            }                                                                 \
-        }                                                                     \
-        /* update branch history table */                                     \
-        int min_idx = 0;                                                      \
-        for (int i = 0; i < HISTORY_SIZE; i++) {                              \
-            if (!ir->branch_table->times[i]) {                                \
-                min_idx = i;                                                  \
-                break;                                                        \
-            } else if (ir->branch_table->times[min_idx] >                     \
-                       ir->branch_table->times[i]) {                          \
-                min_idx = i;                                                  \
-            }                                                                 \
-        }                                                                     \
-        ir->branch_table->times[min_idx] = 1;                                 \
-        ir->branch_table->PC[min_idx] = PC;                                   \
-        if (cache_hot(rv->block_cache, PC))                                   \
-            goto end_op;                                                      \
-        MUST_TAIL return block->ir_head->impl(rv, block->ir_head, cycle, PC); \
+#define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()            \
+    block_t *block = cache_get(rv->block_cache, PC, true); \
+    if (block) {                                           \
+        for (int i = 0; i < HISTORY_SIZE; i++) {           \
+            if (ir->branch_table->PC[i] == PC) {           \
+                ir->branch_table->times[i]++;              \
+                if (cache_hot(rv->block_cache, PC))        \
+                    goto end_op;                           \
+            }                                              \
+        }                                                  \
+        /* update branch history table */                  \
+        int min_idx = 0;                                   \
+        for (int i = 0; i < HISTORY_SIZE; i++) {           \
+            if (!ir->branch_table->times[i]) {             \
+                min_idx = i;                               \
+                break;                                     \
+            } else if (ir->branch_table->times[min_idx] >  \
+                       ir->branch_table->times[i]) {       \
+                min_idx = i;                               \
+            }                                              \
+        }                                                  \
+        ir->branch_table->times[min_idx] = 1;              \
+        ir->branch_table->PC[min_idx] = PC;                \
+        if (cache_hot(rv->block_cache, PC))                \
+            goto end_op;                                   \
+        rv->PC = PC;                                       \
+        rv->csr_cycle = cycle;                             \
+        rv->next_insn = block->ir_head;                    \
+        return true;                                       \
     }
 #endif
 
@@ -306,7 +317,10 @@ RVOP(
         }, );                                                      \
         PC += 4;                                                   \
         last_pc = PC;                                              \
-        MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);    \
+        rv->PC = PC;                                               \
+        rv->csr_cycle = cycle;                                     \
+        rv->next_insn = untaken;                                   \
+        return true;                                               \
     }                                                              \
     is_branch_taken = true;                                        \
     PC += ir->imm;                                                 \
@@ -324,7 +338,10 @@ RVOP(
                 goto end_op;                                       \
         }, );                                                      \
         last_pc = PC;                                              \
-        MUST_TAIL return taken->impl(rv, taken, cycle, PC);        \
+        rv->PC = PC;                                               \
+        rv->csr_cycle = cycle;                                     \
+        rv->next_insn = taken;                                     \
+        return true;                                               \
     }                                                              \
     goto end_op;
 
@@ -1991,7 +2008,10 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = taken;
+            return true;
         }
         goto end_op;
     },
@@ -2152,7 +2172,10 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = taken;
+            return true;
         }
         goto end_op;
     },
@@ -2186,7 +2209,10 @@ RVOP(
 #endif
             PC += 2;
             last_pc = PC;
-            MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = untaken;
+            return true;
         }
         is_branch_taken = true;
         PC += ir->imm;
@@ -2200,7 +2226,10 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = taken;
+            return true;
         }
         goto end_op;
     },
@@ -2243,7 +2272,10 @@ RVOP(
 #endif
             PC += 2;
             last_pc = PC;
-            MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = untaken;
+            return true;
         }
         is_branch_taken = true;
         PC += ir->imm;
@@ -2257,7 +2289,10 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+            rv->PC = PC;
+            rv->csr_cycle = cycle;
+            rv->next_insn = taken;
+            return true;
         }
         goto end_op;
     },

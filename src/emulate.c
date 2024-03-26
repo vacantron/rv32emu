@@ -394,65 +394,56 @@ static bool has_loops = false;
 #endif
 
 /* Interpreter-based execution path */
-#define RVOP(inst, code, asm)                                         \
-    static bool do_##inst(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, \
-                          uint32_t PC)                                \
-    {                                                                 \
-        cycle++;                                                      \
-        code;                                                         \
-    nextop:                                                           \
-        PC += __rv_insn_##inst##_len;                                 \
-        if (unlikely(RVOP_NO_NEXT(ir))) {                             \
-            goto end_op;                                              \
-        }                                                             \
-        const rv_insn_t *next = ir->next;                             \
-        MUST_TAIL return next->impl(rv, next, cycle, PC);             \
-    end_op:                                                           \
-        rv->csr_cycle = cycle;                                        \
-        rv->PC = PC;                                                  \
-        return true;                                                  \
+#define RVOP(inst, code, asm)                         \
+    static bool do_##inst(riscv_t *rv, rv_insn_t *ir) \
+    {                                                 \
+        uint32_t PC = rv->PC;                         \
+        uint64_t cycle = rv->csr_cycle;               \
+                                                      \
+        rv->next_insn = NULL;                         \
+        cycle++;                                      \
+        code;                                         \
+    nextop:                                           \
+        PC += __rv_insn_##inst##_len;                 \
+        if (likely(!RVOP_NO_NEXT(ir)))                \
+            rv->next_insn = ir->next;                 \
+    end_op:                                           \
+        rv->PC = PC;                                  \
+        rv->csr_cycle = cycle;                        \
+        return true;                                  \
     }
 
 #include "rv32_template.c"
 #undef RVOP
 
 /* multiple LUI */
-static bool do_fuse1(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
+static bool do_fuse1(riscv_t *rv, rv_insn_t *ir)
 {
-    cycle += ir->imm2;
     opcode_fuse_t *fuse = ir->fuse;
     for (int i = 0; i < ir->imm2; i++)
         rv->X[fuse[i].rd] = fuse[i].imm;
-    PC += ir->imm2 * 4;
-    if (unlikely(RVOP_NO_NEXT(ir))) {
-        rv->csr_cycle = cycle;
-        rv->PC = PC;
-        return true;
-    }
-    const rv_insn_t *next = ir->next;
-    MUST_TAIL return next->impl(rv, next, cycle, PC);
+    rv->PC += ir->imm2 * 4;
+    rv->csr_cycle += ir->imm2;
+    rv->next_insn = ir->next;
+    return true;
 }
 
 /* LUI + ADD */
-static bool do_fuse2(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
+static bool do_fuse2(riscv_t *rv, rv_insn_t *ir)
 {
-    cycle += 2;
     rv->X[ir->rd] = ir->imm;
     rv->X[ir->rs2] = rv->X[ir->rd] + rv->X[ir->rs1];
-    PC += 8;
-    if (unlikely(RVOP_NO_NEXT(ir))) {
-        rv->csr_cycle = cycle;
-        rv->PC = PC;
-        return true;
-    }
-    const rv_insn_t *next = ir->next;
-    MUST_TAIL return next->impl(rv, next, cycle, PC);
+    rv->PC += 8;
+    rv->csr_cycle += 2;
+    rv->next_insn = ir->next;
+    return true;
 }
 
 /* multiple SW */
-static bool do_fuse3(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
+static bool do_fuse3(riscv_t *rv, rv_insn_t *ir)
 {
-    cycle += ir->imm2;
+    uint32_t PC = rv->PC;
+    uint64_t cycle = rv->csr_cycle;
     opcode_fuse_t *fuse = ir->fuse;
     /* The memory addresses of the sw instructions are contiguous, thus only
      * the first SW instruction needs to be checked to determine if its memory
@@ -463,20 +454,17 @@ static bool do_fuse3(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
         RV_EXC_MISALIGN_HANDLER(3, store, false, 1);
         rv->io.mem_write_w(addr, rv->X[fuse[i].rs2]);
     }
-    PC += ir->imm2 * 4;
-    if (unlikely(RVOP_NO_NEXT(ir))) {
-        rv->csr_cycle = cycle;
-        rv->PC = PC;
-        return true;
-    }
-    const rv_insn_t *next = ir->next;
-    MUST_TAIL return next->impl(rv, next, cycle, PC);
+    rv->PC = PC + ir->imm2 * 4;
+    rv->csr_cycle += ir->imm2;
+    rv->next_insn = ir->next;
+    return true;
 }
 
 /* multiple LW */
-static bool do_fuse4(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
+static bool do_fuse4(riscv_t *rv, rv_insn_t *ir)
 {
-    cycle += ir->imm2;
+    uint32_t PC = rv->PC;
+    uint64_t cycle = rv->csr_cycle;
     opcode_fuse_t *fuse = ir->fuse;
     /* The memory addresses of the lw instructions are contiguous, therefore
      * only the first LW instruction needs to be checked to determine if its
@@ -487,60 +475,40 @@ static bool do_fuse4(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
         rv->X[fuse[i].rd] = rv->io.mem_read_w(addr);
     }
-    PC += ir->imm2 * 4;
-    if (unlikely(RVOP_NO_NEXT(ir))) {
-        rv->csr_cycle = cycle;
-        rv->PC = PC;
-        return true;
-    }
-    const rv_insn_t *next = ir->next;
-    MUST_TAIL return next->impl(rv, next, cycle, PC);
+    rv->PC = PC + ir->imm2 * 4;
+    rv->csr_cycle += ir->imm2;
+    rv->next_insn = ir->next;
+    return true;
 }
 
 /* memset */
-static bool do_fuse5(riscv_t *rv,
-                     const rv_insn_t *ir UNUSED,
-                     uint64_t cycle,
-                     uint32_t PC UNUSED)
+static bool do_fuse5(riscv_t *rv, const rv_insn_t *ir UNUSED)
 {
     /* FIXME: specify the correct cycle count for memset routine */
-    cycle += 2;
     rv->io.on_memset(rv);
-    rv->csr_cycle = cycle;
+    rv->csr_cycle += 2;
     return true;
 }
 
 /* memcpy */
-static bool do_fuse6(riscv_t *rv,
-                     const rv_insn_t *ir UNUSED,
-                     uint64_t cycle,
-                     uint32_t PC UNUSED)
+static bool do_fuse6(riscv_t *rv, const rv_insn_t *ir UNUSED)
 {
     /* FIXME: specify the correct cycle count for memcpy routine */
-    cycle += 2;
+    rv->csr_cycle += 2;
     rv->io.on_memcpy(rv);
-    rv->csr_cycle = cycle;
     return true;
 }
 
 /* multiple shift immediate */
-static bool do_fuse7(riscv_t *rv,
-                     const rv_insn_t *ir,
-                     uint64_t cycle,
-                     uint32_t PC)
+static bool do_fuse7(riscv_t *rv, const rv_insn_t *ir)
 {
-    cycle += ir->imm2;
     opcode_fuse_t *fuse = ir->fuse;
     for (int i = 0; i < ir->imm2; i++)
         shift_func(rv, (const rv_insn_t *) (&fuse[i]));
-    PC += ir->imm2 * 4;
-    if (unlikely(RVOP_NO_NEXT(ir))) {
-        rv->csr_cycle = cycle;
-        rv->PC = PC;
-        return true;
-    }
-    const rv_insn_t *next = ir->next;
-    MUST_TAIL return next->impl(rv, next, cycle, PC);
+    rv->PC += ir->imm2 * 4;
+    rv->csr_cycle += ir->imm2;
+    rv->next_insn = ir->next;
+    return true;
 }
 
 /* clang-format off */
@@ -1078,6 +1046,17 @@ static bool runtime_profiler(riscv_t *rv, block_t *block)
 typedef void (*exec_block_func_t)(riscv_t *rv, uintptr_t);
 #endif
 
+static inline bool invoke_insn(riscv_t *rv, block_t *block)
+{
+    rv_insn_t *ir = block->ir_head;
+    bool ret = true;
+
+    for (; ir && ret; ir = rv->next_insn)
+        ret = ir->impl(rv, ir);
+
+    return ret;
+}
+
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1168,8 +1147,7 @@ void rv_step(void *arg)
         has_loops = false;
 #endif
         /* execute the block by interpreter */
-        const rv_insn_t *ir = block->ir_head;
-        if (unlikely(!ir->impl(rv, ir, rv->csr_cycle, rv->PC))) {
+        if (unlikely(!invoke_insn(rv, block))) {
             /* block should not be extended if execption handler invoked */
             prev = NULL;
             break;
