@@ -11,3 +11,7 @@
 	url = https://github.com/sysprog21/berkeley-softfloat-3
 	branch = rv32emu
 	shallow = true
+[submodule "ir"]
+	path = src/ir
+	url = https://github.com/dstogov/ir
+	shallow = true
