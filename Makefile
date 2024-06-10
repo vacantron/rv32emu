@@ -141,9 +141,9 @@ ifneq ("$(LLVM_CONFIG)", "")
 ifneq ("$(findstring -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS, "$(shell $(LLVM_CONFIG) --cflags)")", "")
 ENABLE_T2C := 1
 $(call set-feature, T2C)
-OBJS_EXT += t2c.o
-CFLAGS += -g $(shell $(LLVM_CONFIG) --cflags)
-LDFLAGS += $(shell $(LLVM_CONFIG) --libs)
+OBJS_EXT += t2c.o ir.o
+CFLAGS += -g $(shell $(LLVM_CONFIG) --cflags) -Isrc/ir
+LDFLAGS += $(shell $(LLVM_CONFIG) --libs) -Lsrc/ir -lir -ldl
 else
 ENABLE_T2C := 0
 $(call set-feature, T2C)
@@ -165,6 +165,16 @@ $(OUT)/jit.o: src/jit.c src/rv32_jit.c
 $(OUT)/t2c.o: src/t2c.c src/t2c_template.c
 	$(VECHO) "  CC\t$@\n"
 	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
+
+$(OUT)/ir.o: src/ir.c
+	$(VECHO) "  CC\t$@\n"
+	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
+
+.PHONY: ir
+
+ir:
+	$(MAKE) -C src/ir
+
 endif
 # For tail-call elimination, we need a specific set of build flags applied.
 # FIXME: On macOS + Apple Silicon, -fno-stack-protector might have a negative impact.
