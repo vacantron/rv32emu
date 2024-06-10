@@ -52,5 +52,6 @@ typedef void (*exec_block_func_t)(riscv_t *rv, uintptr_t);
 
 #if RV32_HAS(T2C)
 void t2c_compile(block_t *block, uint64_t mem_base);
+void ir_compile(riscv_t *, block_t *);
 typedef void (*exec_t2c_func_t)(riscv_t *);
 #endif

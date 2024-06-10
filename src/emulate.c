@@ -825,9 +825,10 @@ static block_t *block_find_or_translate(riscv_t *rv)
         optimize_constant(rv, next);
 #if RV32_HAS(GDBSTUB)
         if (likely(!rv->debug_mode))
+            ;
 #endif
             /* macro operation fusion */
-            match_pattern(rv, next);
+            // match_pattern(rv, next);
 
 #if !RV32_HAS(JIT)
         /* insert the block into block map */
@@ -987,15 +988,14 @@ void rv_step(void *arg)
 #if RV32_HAS(JIT)
 #if RV32_HAS(T2C)
         /* executed through the tier-2 JIT compiler */
-        if (block->hot2) {
-            ((exec_t2c_func_t) block->func)(rv);
+        if (block->ir_hot) {
+            ((void (*)()) (block->ir_func_ptr))();
             prev = NULL;
             continue;
-        } /* check if the execution path is strong hotspot */
+        }
         if (block->n_invoke >= THRESHOLD) {
-            t2c_compile(block,
-                        (uint64_t) ((memory_t *) PRIV(rv)->mem)->mem_base);
-            ((exec_t2c_func_t) block->func)(rv);
+            ir_compile(rv, block);
+            ((void (*)()) (block->ir_func_ptr))();
             prev = NULL;
             continue;
         }
