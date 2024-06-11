@@ -77,6 +77,7 @@ typedef struct block {
     void *func;        /**< The function pointer of T2 machine code */
     void *ir_func_ptr;
     void *bt_set;
+    int proc_cnt;
     struct list_head list;
 #endif
 } block_t;

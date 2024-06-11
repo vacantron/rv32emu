@@ -15,6 +15,8 @@ static ir_ref ir_reg_refs[N_RV_REGS];
 static ir_ref ir_branch_stack[MAX_IR_STACK_SIZE];
 static int ir_branch_stack_size = 0;
 
+static int proc_cnt = 0;
+
 static struct ir_map_entry {
     uint32_t pc;
     ir_ref ref;
@@ -64,10 +66,26 @@ static inline void ir_bt_set_init(block_t *block)
     block->bt_set = calloc(1, sizeof(set_t));
 }
 
-/**
- * TODO: check/ensure "has_ir_loop" has been initialized to zero when creating
- * block
- */
+static inline bool ir_is_terminal_insn(uint8_t opcode)
+{
+    switch (opcode) {
+    case rv_insn_jalr:
+    case rv_insn_ecall:
+    case rv_insn_ebreak:
+    case rv_insn_sret:
+    case rv_insn_mret:
+#if RV32_HAS(EXT_C)
+    case rv_insn_cjalr:
+    case rv_insn_cjr:
+    case rv_insn_cebreak:
+#endif
+        return true;
+    default:
+        return false;
+    }
+    __UNREACHABLE;
+}
+
 static void ir_find_loop(riscv_t *rv, block_t *block)
 {
     if (!set_add((set_t *) block->bt_set, block->ir_head->pc))
@@ -77,7 +95,7 @@ static void ir_find_loop(riscv_t *rv, block_t *block)
 
     rv_insn_t *tail = block->ir_tail;
 
-    if (tail->opcode == rv_insn_jalr)
+    if (ir_is_terminal_insn(tail->opcode))
         return;
 
     if (tail->branch_taken) {
@@ -86,7 +104,12 @@ static void ir_find_loop(riscv_t *rv, block_t *block)
 
         if (set_has((set_t *) block->bt_set, tail->branch_taken->pc)) {
             next_block->has_ir_loop = true;
+            next_block->proc_cnt = proc_cnt;
         } else {
+            if (next_block->proc_cnt != proc_cnt) {
+                next_block->proc_cnt = proc_cnt;
+                next_block->has_ir_loop = false;
+            }
             if (!next_block->has_ir_loop) {
                 if (!next_block->bt_set)
                     ir_bt_set_init(next_block);
@@ -102,7 +125,12 @@ static void ir_find_loop(riscv_t *rv, block_t *block)
 
         if (set_has((set_t *) block->bt_set, tail->branch_untaken->pc)) {
             next_block->has_ir_loop = true;
+            next_block->proc_cnt = proc_cnt;
         } else {
+            if (next_block->proc_cnt != proc_cnt) {
+                next_block->proc_cnt = proc_cnt;
+                next_block->has_ir_loop = false;
+            }
             if (!next_block->has_ir_loop) {
                 if (!next_block->bt_set)
                     ir_bt_set_init(next_block);
@@ -119,26 +147,8 @@ static inline void ir_prepare_operand(ir_ctx *ctx, riscv_t *rv, uint8_t idx)
     if (ir_reg_refs[idx])
         return;
 
-    ir_reg_refs[idx] = ir_LOAD_I32(ir_CONST_ADDR(&rv->X[idx]));
-}
-
-static inline bool ir_is_terminal_insn(uint8_t opcode)
-{
-    switch (opcode) {
-    case rv_insn_jalr:
-    case rv_insn_ecall:
-    case rv_insn_ebreak:
-    case rv_insn_sret:
-    case rv_insn_mret:
-#if RV32_HAS(EXT_C)
-    case rv_insn_cjalr:
-    case rv_insn_cjr:
-    case rv_insn_cebreak:
-#endif
-        return true;
-    default:
-        return 0;
-    }
+    ir_reg_refs[idx] =
+        ir_HARD_COPY_I32(ir_LOAD_I32(ir_CONST_ADDR(&rv->X[idx])));
 }
 
 void ir_build(ir_ctx *ctx,
@@ -513,6 +523,263 @@ void ir_build(ir_ctx *ctx,
             addr = ir_CONST_ADDR((uintptr_t) rv->io.on_ebreak);
             ir_CALL_1(IR_UNUSED, addr, ir_CONST_ADDR(rv));
             break;
+#if RV32_HAS(EXT_M)
+        case rv_insn_mul:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_MUL_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_mulh: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_ref t1 = ir_SEXT_I64(ir_reg_refs[curr->rs1]);
+            ir_ref t2 = ir_SEXT_I64(ir_reg_refs[curr->rs2]);
+
+            ir_reg_refs[curr->rd] =
+                ir_SHR_I64(ir_MUL_I64(t1, t2), ir_CONST_I32(32));
+        } break;
+        case rv_insn_mulhsu: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_ref t1 = ir_SEXT_I64(ir_reg_refs[curr->rs1]);
+            ir_ref t2 = ir_ZEXT_I64(ir_reg_refs[curr->rs2]);
+
+            ir_reg_refs[curr->rd] =
+                ir_SHR_I64(ir_MUL_I64(t1, t2), ir_CONST_I32(32));
+        } break;
+        case rv_insn_mulhu: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_ref t1 = ir_ZEXT_I64(ir_reg_refs[curr->rs1]);
+            ir_ref t2 = ir_ZEXT_I64(ir_reg_refs[curr->rs2]);
+
+            ir_reg_refs[curr->rd] =
+                ir_SHR_U64(ir_MUL_U64(t1, t2), ir_CONST_U32(32));
+        } break;
+        case rv_insn_div: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_DIV_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+        } break;
+        case rv_insn_divu: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_DIV_U32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+        } break;
+        case rv_insn_rem: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_MOD_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+        } break;
+        case rv_insn_remu: {
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_MOD_U32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+        } break;
+#endif
+#if RV32_HAS(EXT_C)
+        case rv_insn_cnop:
+            break;
+        case rv_insn_cli:
+        case rv_insn_clui:
+            ir_reg_refs[curr->rd] = ir_CONST_I32(curr->imm);
+            break;
+        case rv_insn_cmv:
+            ir_prepare_operand(ctx, rv, curr->rs2);
+            ir_reg_refs[curr->rd] =
+                ir_ADD_I32(ir_reg_refs[curr->rs2], ir_CONST_I32(0));
+            break;
+        case rv_insn_cadd:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_ADD_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_csub:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_SUB_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_cand:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_AND_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_cor:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_OR_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_cxor:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            ir_reg_refs[curr->rd] =
+                ir_XOR_I32(ir_reg_refs[curr->rs1], ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_cslli:
+            ir_prepare_operand(ctx, rv, curr->rd);
+
+            val = ir_CONST_I32(curr->imm);
+            ir_reg_refs[curr->rd] = ir_SHL_I32(ir_reg_refs[curr->rd], val);
+            break;
+        case rv_insn_csrli:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            val = ir_CONST_I32(curr->shamt);
+            ir_reg_refs[curr->rs1] = ir_SHR_I32(ir_reg_refs[curr->rs1], val);
+            break;
+        case rv_insn_csrai:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            val = ir_CONST_I32(curr->shamt);
+            ir_reg_refs[curr->rs1] = ir_SAR_I32(ir_reg_refs[curr->rs1], val);
+            break;
+        case rv_insn_caddi:
+            ir_prepare_operand(ctx, rv, curr->rd);
+
+            val = ir_CONST_I32(curr->imm);
+            ir_reg_refs[curr->rd] = ir_ADD_I32(ir_reg_refs[curr->rd], val);
+            break;
+        case rv_insn_candi:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            val = ir_CONST_I32(curr->imm);
+            ir_reg_refs[curr->rs1] = ir_AND_I32(ir_reg_refs[curr->rs1], val);
+            break;
+        case rv_insn_caddi4spn:
+            ir_prepare_operand(ctx, rv, rv_reg_sp);
+
+            val = ir_CONST_I32(curr->imm);
+            ir_reg_refs[curr->rd] = ir_ADD_I32(ir_reg_refs[rv_reg_sp], val);
+            break;
+        case rv_insn_caddi16sp:
+            ir_prepare_operand(ctx, rv, curr->rd);
+
+            val = ir_CONST_I32(curr->imm);
+            ir_reg_refs[curr->rd] = ir_ADD_I32(ir_reg_refs[curr->rd], val);
+            break;
+        case rv_insn_clwsp:
+            ir_prepare_operand(ctx, rv, rv_reg_sp);
+
+            addr = ir_CONST_ADDR(mem_base + curr->imm);
+            addr = ir_ADD_A(addr, ir_reg_refs[rv_reg_sp]);
+            ir_reg_refs[curr->rd] = ir_HARD_COPY_I32(ir_LOAD_I32(addr));
+            break;
+        case rv_insn_cswsp:
+            ir_prepare_operand(ctx, rv, rv_reg_sp);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            addr = ir_CONST_ADDR(mem_base + curr->imm);
+            addr = ir_ADD_A(ir_reg_refs[rv_reg_sp], addr);
+            ir_STORE(addr, ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_clw:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            addr = ir_CONST_ADDR(mem_base + curr->imm);
+            addr = ir_ADD_A(addr, ir_reg_refs[curr->rs1]);
+            ir_reg_refs[curr->rd] = ir_HARD_COPY_I32(ir_LOAD_I32(addr));
+            break;
+        case rv_insn_csw:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+            ir_prepare_operand(ctx, rv, curr->rs2);
+
+            addr = ir_CONST_ADDR(mem_base + curr->imm);
+            addr = ir_ADD_A(ir_reg_refs[curr->rs1], addr);
+            ir_STORE(addr, ir_reg_refs[curr->rs2]);
+            break;
+        case rv_insn_cbeqz:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            ir_reg_refs_store_all(ctx, rv);
+
+            cond = ir_IF(ir_EQ(ir_reg_refs[curr->rs1], ir_CONST_I32(0)));
+            ir_IF_TRUE(cond);
+            addr = ir_CONST_ADDR(&rv->PC);
+            val = ir_CONST_U32(curr->pc + curr->imm);
+            ir_STORE(addr, val);
+            ir_branch_stack[ir_branch_stack_size++] = cond;
+            assert(ir_branch_stack_size < MAX_IR_STACK_SIZE);
+            break;
+        case rv_insn_cbnez:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            ir_reg_refs_store_all(ctx, rv);
+
+            cond = ir_IF(ir_NE(ir_reg_refs[curr->rs1], ir_CONST_I32(0)));
+            ir_IF_TRUE(cond);
+            addr = ir_CONST_ADDR(&rv->PC);
+            val = ir_CONST_U32(curr->pc + curr->imm);
+            ir_STORE(addr, val);
+            ir_branch_stack[ir_branch_stack_size++] = cond;
+            assert(ir_branch_stack_size < MAX_IR_STACK_SIZE);
+            break;
+        case rv_insn_cj:
+            ir_reg_refs_store_all(ctx, rv);
+            addr = ir_CONST_ADDR(&rv->PC);
+            val = ir_CONST_U32(curr->pc + curr->imm);
+            ir_STORE(addr, val);
+            break;
+        case rv_insn_cjal:
+            ir_reg_refs_store_all(ctx, rv);
+
+            addr = ir_CONST_ADDR(&rv->X[rv_reg_ra]);
+            val = ir_CONST_U32(curr->pc + 2);
+            ir_STORE(addr, val);
+
+            addr = ir_CONST_ADDR(&rv->PC);
+            val = ir_CONST_U32(curr->pc + curr->imm);
+            ir_STORE(addr, val);
+            break;
+        case rv_insn_cjr:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            ir_reg_refs_store_all(ctx, rv);
+
+            addr = ir_CONST_ADDR(&rv->PC);
+            ir_STORE(addr, ir_reg_refs[curr->rs1]);
+            break;
+        case rv_insn_cjalr:
+            ir_prepare_operand(ctx, rv, curr->rs1);
+
+            ir_reg_refs_store_all(ctx, rv);
+
+            addr = ir_CONST_ADDR(&rv->X[rv_reg_ra]);
+            val = ir_CONST_U32(curr->pc + 2);
+            ir_STORE(addr, val);
+
+            addr = ir_CONST_ADDR(&rv->PC);
+            ir_STORE(addr, ir_reg_refs[curr->rs1]);
+            break;
+        case rv_insn_cebreak:
+            ir_reg_refs_store_all(ctx, rv);
+            addr = ir_CONST_ADDR(&rv->PC);
+            ir_STORE(addr, ir_CONST_U32(curr->pc));
+            addr = ir_CONST_ADDR((uintptr_t) rv->io.on_ebreak);
+            ir_CALL_1(IR_UNUSED, addr, ir_CONST_ADDR(rv));
+            break;
+#endif
         default:
             assert(!"Unsupported operator");
             __UNREACHABLE;
@@ -542,20 +809,26 @@ void ir_build(ir_ctx *ctx,
             ir_build(ctx, rv, next_block, set, map);
         }
 
-        if (curr->opcode != rv_insn_jal) {
+        if (curr->opcode != rv_insn_jal && curr->opcode != rv_insn_cj &&
+            curr->opcode != rv_insn_cjal) {
             ir_IF_FALSE(ir_branch_stack[--ir_branch_stack_size]);
             assert(ir_branch_stack_size > -1);
         }
     } else {
         ir_RETURN(IR_UNUSED);
-        if (curr->opcode != rv_insn_jal) {
+        if (curr->opcode != rv_insn_jal && curr->opcode != rv_insn_cj &&
+            curr->opcode != rv_insn_cjal) {
             ir_IF_FALSE(ir_branch_stack[--ir_branch_stack_size]);
             assert(ir_branch_stack_size > -1);
         }
     }
 
-    if (curr->opcode != rv_insn_jal) {
-        ir_STORE(ir_CONST_ADDR(&rv->PC), ir_CONST_U32(curr->pc + 4));
+    if (curr->opcode != rv_insn_jal && curr->opcode != rv_insn_cj &&
+        curr->opcode != rv_insn_cjal) {
+        if (curr->opcode == rv_insn_cbeqz || curr->opcode == rv_insn_cbnez)
+            ir_STORE(ir_CONST_ADDR(&rv->PC), ir_CONST_U32(curr->pc + 2));
+        else
+            ir_STORE(ir_CONST_ADDR(&rv->PC), ir_CONST_U32(curr->pc + 4));
     }
 
     if (curr->branch_untaken) {
@@ -570,7 +843,8 @@ void ir_build(ir_ctx *ctx,
             ir_build(ctx, rv, next_block, set, map);
         }
     } else {
-        if (curr->opcode != rv_insn_jal)
+        if (curr->opcode != rv_insn_jal && curr->opcode != rv_insn_cj &&
+            curr->opcode != rv_insn_cjal)
             ir_RETURN(IR_UNUSED);
     }
 }
@@ -580,16 +854,21 @@ void ir_compile(riscv_t *rv, block_t *block)
     set_t set;
     struct ir_map map;
 
+    proc_cnt++;
+
     set_reset(&set);
     memset((void *) &map, 0, sizeof(struct ir_map));
 
     ir_ctx *ctx = malloc(sizeof(ir_ctx));
 
-    ir_init(ctx, IR_FUNCTION | IR_OPT_FOLDING | IR_OPT_CFG | IR_OPT_CODEGEN,
+    ir_init(ctx,
+            IR_FUNCTION | IR_OPT_INLINE | IR_OPT_FOLDING | IR_OPT_CFG |
+                IR_OPT_CODEGEN,
             256, 1024);
     ctx->ret_type = IR_VOID;
 
     ir_bt_set_init(block);
+    block->proc_cnt = proc_cnt;
     ir_find_loop(rv, block);
 
     ir_consistency_check();
@@ -597,11 +876,11 @@ void ir_compile(riscv_t *rv, block_t *block)
     ir_START();
     ir_build(ctx, rv, block, &set, &map);
 
-    for (size_t i = 0, j; i < map.size; i++) {
+    for (size_t i = 0; i < map.size; i++) {
         assert(map.entries[i].succ_size > 0);
 
         ir_ref refs[MAX_IR_LOOP_SUCC];
-        for (j = 0; j < map.entries[i].succ_size; j++)
+        for (size_t j = 0; j < map.entries[i].succ_size; j++)
             refs[j] = map.entries[i].succ[j];
 
         ir_MERGE_N(map.entries[i].succ_size, refs);

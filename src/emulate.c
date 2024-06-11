@@ -306,6 +306,8 @@ static block_t *block_alloc(riscv_t *rv)
     block->hot = false;
     block->hot2 = false;
     block->has_loops = false;
+    block->has_ir_loop = false;
+    block->bt_set = NULL;
     block->n_invoke = 0;
     INIT_LIST_HEAD(&block->list);
 #endif
