@@ -1073,6 +1073,19 @@ RVOP(
     GEN({
         assert; /* FIXME: Implement */
     }))
+
+RVOP(
+    fence,
+    {
+        PC += 4;
+        /* FIXME: fill real implementations */
+        rv->csr_cycle = cycle;
+        rv->PC = PC;
+        return true;
+    },
+    GEN({
+        assert; /* FIXME: Implement */
+    }))
 #endif
 
 #if RV32_HAS(Zicsr) /* RV32 Zicsr Standard Extension */

@@ -346,6 +346,9 @@ riscv_t *rv_create(riscv_user_t rv_attr)
 	/* setup PLIC */
         attr->plic = plic_new();
         assert(attr->plic);
+
+        /* reset privilege mode */
+        rv->priv_mode = RV_PRIV_S_MODE;
     }
 #endif /* SYSTEM */
 

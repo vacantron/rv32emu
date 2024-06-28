@@ -912,16 +912,27 @@ static inline bool op_system(rv_insn_t *ir, const uint32_t insn)
  *  31       20 19   15 14    12 11   7 6      0
  * | imm[11:0] |  rs1  | funct3 |  rd  | opcode |
  */
-static inline bool op_misc_mem(rv_insn_t *ir, const uint32_t insn UNUSED)
+static inline bool op_misc_mem(rv_insn_t *ir, const uint32_t insn)
 {
     /* inst   imm[11:0] rs1 funct3 rd opcode
      * ------+---------+---+------+--+-------
      * FENCEI imm[11:0] rs1 001    rd 0001111
      */
+    const uint32_t funct3 = decode_funct3(insn);
+    switch(funct3){
+	    case 000:
+                    /* FIXME: fill real implementations */
+                    ir->opcode = rv_insn_fence;
+		    return true;
+            case 001:
+                    /* FIXME: fill real implementations */
+                    ir->opcode = rv_insn_fencei;
+		    return true;
+	    default:
+		    return false;
+    }
 
-    /* FIXME: fill real implementations */
-    ir->opcode = rv_insn_fencei;
-    return true;
+    return false;
 }
 #else
 #define op_misc_mem OP_UNIMP

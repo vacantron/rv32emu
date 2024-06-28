@@ -492,7 +492,13 @@ static bool has_loops = false;
                           uint32_t PC)                                \
     {                                                                 \
         cycle++;                                                      \
+	if(rv->PC == 0xc0041128){ \
+		printf("a0: 0x%x, s2: 0x%x\n", rv_get_reg(rv, rv_reg_a0), rv_get_reg(rv, rv_reg_s2)); \
+                printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm); \
+		exit(1);\
+	} \
         code;                                                         \
+        printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm); \
     nextop:                                                           \
         PC += __rv_insn_##inst##_len;                                 \
         if (unlikely(RVOP_NO_NEXT(ir))) {                             \
@@ -1432,7 +1438,28 @@ uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
-        return memory_read_w(ppn | offset);
+	const uint32_t addr = ppn | offset;
+	const vm_attr_t *attr = PRIV(rv);
+	if(addr < attr->mem->mem_size){
+		return memory_read_w(addr);
+	}
+
+	uint32_t plic_read_val;
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
+            /* 256 regions of 1MiB */
+            switch ((addr >> 20) & MASK(8)) {
+            case 0x0:
+            case 0x2: /* PLIC (0 - 0x3F) */
+                plic_read_val = plic_read(rv, addr & 0x3FFFFFF);
+                plic_update_interrupts(rv);
+                return plic_read_val;
+            case 0x40: /* UART */
+		printf("misaligned UART read word\n");
+                //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
+                //emu_update_uart_interrupts(vm);
+                return 0;
+            }
+        }
     }
     return memory_read_w(addr);
 }
@@ -1452,7 +1479,26 @@ uint16_t mmu_read_s(riscv_t *rv, const uint32_t addr)
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
-        return memory_read_s(ppn | offset);
+	const uint32_t addr = ppn | offset;
+	const vm_attr_t *attr = PRIV(rv);
+	if(addr < attr->mem->mem_size){
+		return memory_read_s(addr);
+	}
+
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
+            /* 256 regions of 1MiB */
+            switch ((addr >> 20) & MASK(8)) {
+            case 0x0:
+            case 0x2: /* PLIC (0 - 0x3F) */
+		printf("misaligned PLIC read short\n");
+                return 0;
+            case 0x40: /* UART */
+		printf("misaligned UART read short\n");
+                //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
+                //emu_update_uart_interrupts(vm);
+                return 0;
+            }
+        }
     }
     return memory_read_s(addr);
 }
@@ -1472,7 +1518,26 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
-        return memory_read_b(ppn | offset);
+	const uint32_t addr = ppn | offset;
+	const vm_attr_t *attr = PRIV(rv);
+	if(addr < attr->mem->mem_size){
+		return memory_read_b(addr);
+	}
+
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
+            /* 256 regions of 1MiB */
+            switch ((addr >> 20) & MASK(8)) {
+            case 0x0:
+            case 0x2: /* PLIC (0 - 0x3F) */
+		printf("misaligned PLIC read byte\n");
+                return 0;
+            case 0x40: /* UART */
+		printf("UART read byte\n");
+                //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
+                //emu_update_uart_interrupts(vm);
+                return 0;
+            }
+        }
     }
     return memory_read_b(addr);
 }
@@ -1492,7 +1557,28 @@ void mmu_write_w(riscv_t *rv, const uint32_t addr, const uint32_t val)
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
-        return memory_write_w(ppn | offset, (uint8_t *) &val);
+	const uint32_t addr = ppn | offset;
+	const vm_attr_t *attr = PRIV(rv);
+	if(addr < attr->mem->mem_size){
+		memory_write_w(addr, (uint8_t *) &val);
+		return;
+	}
+
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
+            /* 256 regions of 1MiB */
+            switch ((addr >> 20) & MASK(8)) {
+            case 0x0:
+            case 0x2: /* PLIC (0 - 0x3F) */
+                plic_write(rv, addr & 0x3FFFFFF, (uint8_t *) &val);
+                plic_update_interrupts(rv);
+                return;
+            case 0x40: /* UART */
+		printf("misaligned UART write word\n");
+                //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
+                //emu_update_uart_interrupts(vm);
+                return;
+            }
+        }
     }
     return memory_write_w(addr, (uint8_t *) &val);
 }
@@ -1512,11 +1598,32 @@ void mmu_write_s(riscv_t *rv, const uint32_t addr, const uint16_t val)
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
-        return memory_write_s(ppn | offset, (uint8_t *) &val);
+	const uint32_t addr = ppn | offset;
+	const vm_attr_t *attr = PRIV(rv);
+	if(addr < attr->mem->mem_size){
+		memory_write_s(addr, (uint8_t *) &val);
+		return;
+	}
+
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
+            /* 256 regions of 1MiB */
+            switch ((addr >> 20) & MASK(8)) {
+            case 0x0:
+            case 0x2: /* PLIC (0 - 0x3F) */
+		printf("misalign PLIC write short\n");
+                return;
+            case 0x40: /* UART */
+		printf("misaligned UART write short\n");
+                //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
+                //emu_update_uart_interrupts(vm);
+                return;
+            }
+        }
     }
     return memory_write_s(addr, (uint8_t *) &val);
 }
 
+#include <unistd.h>
 void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
 {
     uint32_t level;
@@ -1532,7 +1639,30 @@ void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
-        return memory_write_b(ppn | offset, (uint8_t *) &val);
+	const uint32_t oaddr = addr;
+	const uint32_t addr = ppn | offset;
+	const vm_attr_t *attr = PRIV(rv);
+	if(addr < attr->mem->mem_size){
+		//printf("PC: 0x%x, addr: 0x%x, original: 0x%x\n", rv->PC, addr, oaddr);
+		memory_write_b(addr, (uint8_t *) &val);
+		return;
+	}
+
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
+            /* 256 regions of 1MiB */
+            switch ((addr >> 20) & MASK(8)) {
+            case 0x0:
+            case 0x2: /* PLIC (0 - 0x3F) */
+		printf("misalign PLIC write byte\n");
+                return;
+            case 0x40: /* UART */
+		write(attr->fd_stdout, &val, 1);
+		printf("UART write byte\n");
+                //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
+                //emu_update_uart_interrupts(vm);
+                return;
+            }
+        }
     }
     return memory_write_b(addr, (uint8_t *) &val);
 }
@@ -1567,6 +1697,7 @@ void ecall_handler(riscv_t *rv)
 {
     assert(rv);
 #if RV32_HAS(SYSTEM)
+    printf("ecall here\n");
     if(rv->priv_mode == RV_PRIV_U_MODE){
     	rv->is_trapped = true; /* syscall vector table defined by supervisor */
         rv_trap_ecall_U(rv, 0);

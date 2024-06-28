@@ -384,6 +384,7 @@ CONSTOPT(sfencevma, {})
 
 #if RV32_HAS(Zifencei) /* RV32 Zifencei Standard Extension */
 CONSTOPT(fencei, {})
+CONSTOPT(fence, {})
 #endif
 
 #if RV32_HAS(Zicsr) /* RV32 Zicsr Standard Extension */
