@@ -389,7 +389,9 @@ typedef struct {
 /* FIXME: replace with kernel image, dtb, etc */
 #if RV32_HAS(SYSTEM)
 typedef struct {
-    char *elf_program;
+    char *kernel;
+    char *initrd;
+    char *dtb;
 } vm_system_t;
 #endif /* SYSTEM */
 

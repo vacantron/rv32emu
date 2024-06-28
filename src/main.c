@@ -208,7 +208,7 @@ int main(int argc, char **args)
     run_flag |= opt_prof_data << 2;
 
     vm_attr_t attr = {
-        .mem_size = MEM_SIZE,
+        .mem_size = 512 * 1024 * 1024, /* FIXME: variadic size */
         .stack_size = STACK_SIZE,
         .args_offset_size = ARGS_OFFSET_SIZE,
         .argc = prog_argc,
@@ -226,7 +226,9 @@ int main(int argc, char **args)
     };
 #if RV32_HAS(SYSTEM)
     assert(attr.data.system);
-    attr.data.system->elf_program = opt_prog_name;
+    attr.data.system->kernel = "build/Image"; /* FIXME: hardcoded */
+    attr.data.system->initrd = "build/rootfs.cpio";/* FIXME: hardcoded */
+    attr.data.system->dtb = "build/minimal.dtb";/* FIXME: hardcoded */
 #else
     assert(attr.data.user);
     attr.data.user->elf_program = opt_prog_name;

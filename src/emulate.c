@@ -58,6 +58,9 @@ extern struct target_ops gdbstub_ops;
         _(pagefault_insn, 12)              /* Instruction page fault */               \
         _(pagefault_load, 13)              /* Load page fault */                      \
         _(pagefault_store, 15)             /* Store page fault */                     \
+	_(supervisor_sw_intr, 1)           /* Supervisor software interrupt */        \
+        _(supervisor_timer_intr, 5)        /* Supervisor software interrupt */        \
+        _(supervisor_external_intr, 9)     /* Supervisor software interrupt */        \
     )
 /* clang-format on */
 
@@ -188,6 +191,7 @@ RV_TRAP_LIST
         rv->compressed = compress;                                    \
         rv->csr_cycle = cycle;                                        \
         rv->PC = PC;                                                  \
+	rv->is_trapped = true;                                        \
         rv_trap_##type##_misaligned(rv, IIF(IO)(addr, mask_or_pc));   \
         return false;                                                 \
     }
@@ -1009,6 +1013,11 @@ static bool runtime_profiler(riscv_t *rv, block_t *block)
 }
 #endif
 
+static bool rv_has_plic_trap(riscv_t *rv)
+{
+    return ((rv->csr_sstatus & SSTATUS_SIE) && (rv->csr_sip & rv->csr_sie));
+}
+
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1022,6 +1031,26 @@ void rv_step(void *arg)
 
     /* loop until hitting the cycle target */
     while (rv->csr_cycle < cycles_target && !rv->halt) {
+
+	/* check for any interrupt after every block emulation */
+	if (rv_has_plic_trap(rv)) {
+            uint32_t intr_applicable = rv->csr_sip && rv->csr_sie;
+            uint8_t intr_idx = ilog2(intr_applicable);
+	    switch(intr_idx){
+	    case 1:
+		rv_trap_supervisor_sw_intr(rv, 0);
+		break;
+	    case 5:
+		rv_trap_supervisor_timer_intr(rv, 0);
+		break;
+	    case 9:
+		rv_trap_supervisor_external_intr(rv, 0);
+		break;
+	    default:
+		break;
+	    }
+        }
+
         if (prev && prev->pc_start != last_pc) {
             /* update previous block */
 #if !RV32_HAS(JIT)
