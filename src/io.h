@@ -9,6 +9,17 @@
 #include <string.h>
 
 typedef struct {
+    uint32_t masked;
+    uint32_t ip;
+    uint32_t ie;
+    /* state of input interrupt lines (level-triggered), set by environment */
+    uint32_t active;
+} plic_t;
+
+/* create a PLIC core */
+plic_t *plic_new();
+
+typedef struct {
     uint8_t *mem_base;
     uint64_t mem_size;
 } memory_t;

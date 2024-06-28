@@ -405,6 +405,9 @@ typedef struct {
 } vm_data_t;
 
 typedef struct {
+    /* plic object */
+    plic_t *plic;
+
     /* vm memory object */
     memory_t *mem;
 

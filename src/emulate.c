@@ -53,14 +53,16 @@ extern struct target_ops gdbstub_ops;
     _(breakpoint, 3)                       /* Breakpoint */                           \
     _(load_misaligned, 4)                  /* Load address misaligned */              \
     _(store_misaligned, 6)                 /* Store/AMO address misaligned */         \
+    _(ecall_U, 8)                          /* Environment call from U-mode */         \
+    _(ecall_S, 9)                          /* Environment call from S-mode */         \
     _(ecall_M, 11)                         /* Environment call from M-mode */         \
     IIF(RV32_HAS(SYSTEM))(                                                            \
         _(pagefault_insn, 12)              /* Instruction page fault */               \
         _(pagefault_load, 13)              /* Load page fault */                      \
         _(pagefault_store, 15)             /* Store page fault */                     \
 	_(supervisor_sw_intr, 1)           /* Supervisor software interrupt */        \
-        _(supervisor_timer_intr, 5)        /* Supervisor software interrupt */        \
-        _(supervisor_external_intr, 9)     /* Supervisor software interrupt */        \
+        _(supervisor_timer_intr, 5)        /* Supervisor timer interrupt */           \
+        _(supervisor_external_intr, 9)     /* Supervisor external interrupt */        \
     )
 /* clang-format on */
 
@@ -1013,6 +1015,88 @@ static bool runtime_profiler(riscv_t *rv, block_t *block)
 }
 #endif
 
+void plic_update_interrupts(riscv_t *rv)
+{
+    vm_attr_t *attr = PRIV(rv);
+    plic_t *plic = attr->plic;
+
+    /* Update pending interrupts */
+    plic->ip |= plic->active & ~plic->masked;
+    plic->masked |= plic->active;
+    /* Send interrupt to target */
+    if (plic->ip & plic->ie)
+        rv->csr_sip |= SIP_SEIP_SHIFT;
+    else
+        rv->csr_sip &= ~SIP_SEIP_SHIFT;
+}
+
+static uint32_t plic_read(riscv_t *rv, const uint32_t addr)
+{
+    vm_attr_t *attr = PRIV(rv);
+    plic_t *plic = attr->plic;
+
+    /* no priority support: source priority hardwired to 1 */
+    if (addr >= 1 && addr <= 31)
+        return 0;
+
+    uint32_t plic_read_val = 0;
+
+    switch (addr) {
+    case 0x400:
+        plic_read_val = plic->ip;
+        break;
+    case 0x800:
+        plic_read_val = plic->ie;
+        break;
+    case 0x80000:
+        /* no priority support: target priority threshold hardwired to 0 */
+        plic_read_val = 0;
+        break;
+    case 0x80001:
+        /* claim */
+        {
+            uint32_t intr_candidate = plic->ip & plic->ie;
+            if (intr_candidate) {
+                plic_read_val = ilog2(intr_candidate);
+                plic->ip &= ~(1U << (plic_read_val));
+            }
+            break;
+        }
+    default:
+        return 0;
+    }
+
+    return plic_read_val;
+}
+
+static void plic_write(riscv_t *rv, const uint32_t addr, uint32_t value)
+{
+    vm_attr_t *attr = PRIV(rv);
+    plic_t *plic = attr->plic;
+
+    /* no priority support: source priority hardwired to 1 */
+    if (addr >= 1 && addr <= 31)
+        return;
+
+    switch (addr) {
+    case 0x800:
+        plic->ie = (value & ~1);
+        break;
+    case 0x80000:
+        /* no priority support: target priority threshold hardwired to 0 */
+        break;
+    case 0x80001:
+        /* completion */
+        if (plic->ie & (1U << value))
+            plic->masked &= ~(1 << value);
+        break;
+    default:
+        break;
+    }
+
+    return;
+}
+
 static bool rv_has_plic_trap(riscv_t *rv)
 {
     return ((rv->csr_sstatus & SSTATUS_SIE) && (rv->csr_sip & rv->csr_sie));
@@ -1482,8 +1566,19 @@ void ebreak_handler(riscv_t *rv)
 void ecall_handler(riscv_t *rv)
 {
     assert(rv);
+#if RV32_HAS(SYSTEM)
+    if(rv->priv_mode == RV_PRIV_U_MODE){
+    	rv->is_trapped = true; /* syscall vector table defined by supervisor */
+        rv_trap_ecall_U(rv, 0);
+    }
+    else if(rv->priv_mode == RV_PRIV_S_MODE){ /* trap to SBI syscall handler */
+        //rv_trap_ecall_S(rv, 0);
+        syscall_handler(rv);
+    }
+#else
     rv_trap_ecall_M(rv, 0);
     syscall_handler(rv);
+#endif
 }
 
 void memset_handler(riscv_t *rv)

@@ -15,6 +15,13 @@
 
 #include "io.h"
 
+plic_t *plic_new(){
+	plic_t *plic = malloc(sizeof(plic_t));
+	assert(plic);
+
+	return plic;
+}
+
 static uint8_t *data_memory_base;
 
 memory_t *memory_new(uint32_t size)

@@ -339,6 +339,13 @@ riscv_t *rv_create(riscv_user_t rv_attr)
 	/* setup RISC-V hart */
 	rv_set_reg(rv, rv_reg_a0, 0);
 	rv_set_reg(rv, rv_reg_a1, dtb_addr);
+
+	/* setup timer */
+	attr->timer = 0xFFFFFFFFFFFFFFF;
+
+	/* setup PLIC */
+        attr->plic = plic_new();
+        assert(attr->plic);
     }
 #endif /* SYSTEM */
 
