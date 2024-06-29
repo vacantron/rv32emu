@@ -288,11 +288,12 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
     if (c == &rv->csr_satp) {
 	//printf("satp val: 0x%x, csr: 0x%x\n", val, csr);
         const uint8_t mode_sv32 = val >> 31;
-	//val &= ~(MASK(9) << 22);
+	val &= ~(MASK(9) << 22); /* disable ASID allocator */
         if (mode_sv32)
-            *c = val & MASK(22); /* store ppn */
+            *c = val;
         else                     /* bare mode */
-            *c = 0; /* virtual mem addr maps to same physical mem addr directly
+            *c = 0; /* virtual mem addr maps to same
+		     * physical mem addr directly
                      */
     } else {
         *c = val;
@@ -1275,7 +1276,7 @@ static uint32_t *mmu_walk(riscv_t *rv,
                           uint32_t **pte_ref)
 {
     vm_attr_t *attr = PRIV(rv);
-    uint32_t ppn = rv->csr_satp;
+    uint32_t ppn = rv->csr_satp & MASK(22);
     if (ppn == 0) /* Bare mode */
         return NULL;
 
@@ -1696,9 +1697,11 @@ void ecall_handler(riscv_t *rv)
         rv_trap_ecall_U(rv, 0);
     }
     else if(rv->priv_mode == RV_PRIV_S_MODE){ /* trap to SBI syscall handler */
-	    printf("S mode ecall\n");
-	    exit(1);
+	    //printf("S mode ecall\n");
+	    //printf("a7 syscall number: %d\n", rv_get_reg(rv, rv_reg_a7));
         //rv_trap_ecall_S(rv, 0);
+	rv->PC += 4;
+
         syscall_handler(rv);
     } else {
     printf("cannot handle ecall here, priv mode: %d\n", rv->priv_mode);
