@@ -1525,10 +1525,10 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
 		printf("misaligned PLIC read byte\n");
                 return 0;
             case 0x40: /* UART */
-		printf("UART read byte\n");
+		//printf("UART read byte\n");
                 //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
                 //emu_update_uart_interrupts(vm);
-                return 0;
+                return 0x60 | 0x1;
             }
         }
     }
@@ -1649,7 +1649,7 @@ void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
                 return;
             case 0x40: /* UART */
 		write(attr->fd_stdout, &val, 1);
-		printf("UART write byte\n");
+		//printf("UART write byte\n");
                 //u8250_write(vm, &attr->uart, addr & 0xFFFFF, (uint8_t *) &val);
                 //emu_update_uart_interrupts(vm);
                 return;
