@@ -3,6 +3,7 @@
  * "LICENSE" for information on usage and redistribution of this file.
  */
 
+#include <unistd.h>
 #include <assert.h>
 #include <setjmp.h>
 #include <stdbool.h>
@@ -53,10 +54,10 @@ extern struct target_ops gdbstub_ops;
     _(breakpoint, 3)                       /* Breakpoint */                           \
     _(load_misaligned, 4)                  /* Load address misaligned */              \
     _(store_misaligned, 6)                 /* Store/AMO address misaligned */         \
-    _(ecall_U, 8)                          /* Environment call from U-mode */         \
-    _(ecall_S, 9)                          /* Environment call from S-mode */         \
     _(ecall_M, 11)                         /* Environment call from M-mode */         \
     IIF(RV32_HAS(SYSTEM))(                                                            \
+        _(ecall_U, 8)                      /* Environment call from U-mode */         \
+        _(ecall_S, 9)                      /* Environment call from S-mode */         \
         _(pagefault_insn, 12)              /* Instruction page fault */               \
         _(pagefault_load, 13)              /* Load page fault */                      \
         _(pagefault_store, 15)             /* Store page fault */                     \
@@ -120,8 +121,6 @@ static jmp_buf env;
          * controls the hart’s current operating state                      \
          */                                                                   \
         /* supervisor */                                                      \
-        if (rv->csr_medeleg & (1U << code) ||                                 \
-            rv->csr_mideleg & (1U << code)) {                                 \
             const uint32_t sstatus_sie =                                      \
                 (rv->csr_sstatus & SSTATUS_SIE) >> SSTATUS_SIE_SHIFT;         \
             rv->csr_sstatus |= (sstatus_sie << SSTATUS_SPIE_SHIFT);           \
@@ -134,24 +133,6 @@ static jmp_buf env;
             rv->csr_stval = mtval;                                            \
             rv->csr_scause = code;                                            \
             rv->csr_sstatus |= SSTATUS_SPP; /* set privilege mode */          \
-        } else {                            /* machine */                     \
-            const uint32_t mstatus_mie =                                      \
-                (rv->csr_mstatus & MSTATUS_MIE) >> MSTATUS_MIE_SHIFT;         \
-            rv->csr_mstatus |= (mstatus_mie << MSTATUS_MPIE_SHIFT);           \
-            rv->csr_mstatus &= ~(MSTATUS_MIE);                                \
-            rv->csr_mstatus |= (rv->priv_mode << MSTATUS_MPP_SHIFT);          \
-            rv->priv_mode = RV_PRIV_M_MODE;                                   \
-            base = rv->csr_mtvec & ~0x3;                                      \
-            mode = rv->csr_mtvec & 0x3;                                       \
-            rv->csr_mepc = rv->PC;                                            \
-            rv->csr_mtval = mtval;                                            \
-            rv->csr_mcause = code;                                            \
-            rv->csr_mstatus |= MSTATUS_MPP; /* set privilege mode */          \
-            if (!rv->csr_mtvec) { /* in case CSR is not configured */         \
-                rv_trap_default_handler(rv);                                  \
-                return;                                                       \
-            }                                                                 \
-        }                                                                     \
         switch (mode) {                                                       \
         /* DIRECT: All traps set PC to base */                                \
         case 0:                                                               \
@@ -305,7 +286,9 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
 #endif
 
     if (c == &rv->csr_satp) {
+	//printf("satp val: 0x%x, csr: 0x%x\n", val, csr);
         const uint8_t mode_sv32 = val >> 31;
+	//val &= ~(MASK(9) << 22);
         if (mode_sv32)
             *c = val & MASK(22); /* store ppn */
         else                     /* bare mode */
@@ -491,14 +474,9 @@ static bool has_loops = false;
     static bool do_##inst(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, \
                           uint32_t PC)                                \
     {                                                                 \
+        /*printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm);*/ \
         cycle++;                                                      \
-	if(rv->PC == 0xc0041128){ \
-		printf("a0: 0x%x, s2: 0x%x\n", rv_get_reg(rv, rv_reg_a0), rv_get_reg(rv, rv_reg_s2)); \
-                printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm); \
-		exit(1);\
-	} \
         code;                                                         \
-        printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm); \
     nextop:                                                           \
         PC += __rv_insn_##inst##_len;                                 \
         if (unlikely(RVOP_NO_NEXT(ir))) {                             \
@@ -702,6 +680,7 @@ static void block_translate(riscv_t *rv, block_t *block)
             rv_trap_illegal_insn(rv, insn);
             break;
         }
+	printf("PC: 0x%x, insn: 0x%x\n", block->pc_end, insn);
         ir->impl = dispatch_table[ir->opcode];
         ir->pc = block->pc_end;
         /* compute the end of pc */
@@ -1270,7 +1249,7 @@ static void trap_handler(riscv_t *rv)
         rv->compressed = is_compressed(insn);
         ir->impl(rv, ir, rv->csr_cycle, rv->PC);
     }
-}
+;}
 
 static bool ppn_is_valid(riscv_t *rv, uint32_t ppn)
 {
@@ -1301,10 +1280,22 @@ static uint32_t *mmu_walk(riscv_t *rv,
         return NULL;
 
     /* root page table */
+    //printf("before page table\n");
     uint32_t *page_table = PAGE_TABLE(ppn);
-    if (!page_table)
+    if (!page_table){
+        printf("ppn: 0x%x\n", ppn);
+        printf("no page table found\n");
+        printf("no page table addr: 0x%x\n", page_table);
+	exit(1);
         return NULL;
+    }
+    //printf("page table offset: 0x%x\n", (ppn << (RV_PG_SHIFT)));
+    //printf("page table offset >> 2: 0x%x\n", (ppn << (RV_PG_SHIFT)) >> 2);
+    //printf("mem_base: 0x%x\n", attr->mem->mem_base);
+    //printf("page table addr: 0x%x\n", page_table);
+    //printf("page table addr >> 2: 0x%x\n", ((uint32_t)page_table) >> 2);
 
+    //printf("before walk table satp: 0x%x\n", rv->csr_satp);
     for (int i = 1; i >= 0; i--) {
         *level = 2 - i;
         uint32_t vpn =
@@ -1385,7 +1376,7 @@ static uint32_t *mmu_walk(riscv_t *rv,
         /* PTE not found, map it in handler */                                 \
         if (!pte && rv->csr_satp) {                                            \
             rv->is_trapped = true;                                             \
-            rv_trap_##pgfault(rv, addr);                                       \
+                rv_trap_##pgfault(rv, addr);                                   \
             return true;                                                       \
         }                                                                      \
         /* valid PTE */                                                        \
@@ -1415,6 +1406,7 @@ uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
     pte = pte_ref; /* PTE should be valid now */
 
     if (rv->csr_satp) {
+	//printf("satp ifetch\n");
         uint32_t ppn;
         uint32_t offset;
         get_ppn_and_offset(ppn, offset);
@@ -1524,6 +1516,7 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
 		return memory_read_b(addr);
 	}
 
+	uint8_t val;
         if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */
             /* 256 regions of 1MiB */
             switch ((addr >> 20) & MASK(8)) {
@@ -1623,7 +1616,6 @@ void mmu_write_s(riscv_t *rv, const uint32_t addr, const uint16_t val)
     return memory_write_s(addr, (uint8_t *) &val);
 }
 
-#include <unistd.h>
 void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
 {
     uint32_t level;
@@ -1697,14 +1689,19 @@ void ecall_handler(riscv_t *rv)
 {
     assert(rv);
 #if RV32_HAS(SYSTEM)
-    printf("ecall here\n");
+    //printf("ecall here, priv mode: %d\n", rv->priv_mode);
     if(rv->priv_mode == RV_PRIV_U_MODE){
+	    printf("U mode ecall\n");
     	rv->is_trapped = true; /* syscall vector table defined by supervisor */
         rv_trap_ecall_U(rv, 0);
     }
     else if(rv->priv_mode == RV_PRIV_S_MODE){ /* trap to SBI syscall handler */
+	    printf("S mode ecall\n");
+	    exit(1);
         //rv_trap_ecall_S(rv, 0);
         syscall_handler(rv);
+    } else {
+    printf("cannot handle ecall here, priv mode: %d\n", rv->priv_mode);
     }
 #else
     rv_trap_ecall_M(rv, 0);
