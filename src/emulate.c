@@ -1421,13 +1421,25 @@ uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
 #define MMIO_R 1
 #define MMIO_W 0
 
-#define MMIO_OP(io, rw)                                            \
-    IIF(io)                                                        \
-    (IIF(rw)(read_val = plic_read(rv, addr & 0x3FFFFFF);           \
-             plic_update_interrupts(rv); return read_val;          \
-             , plic_write(rv, addr & 0x3FFFFFF, (uint8_t *) &val); \
-             plic_update_interrupts(rv); return;),                 \
-     IIF(rw)(return 0x60 | 0x1;, write(attr->fd_stdout, &val, 1); return;))
+
+/* clang-format off */
+#define MMIO_OP(io, rw)                                           \
+    IIF(io)( /* PLIC */                                           \
+        IIF(rw)( /* read */                                       \
+            read_val = plic_read(rv, addr & 0x3FFFFFF);           \
+	    plic_update_interrupts(rv); return read_val;          \
+	    ,     /* write */                                     \
+            plic_write(rv, addr & 0x3FFFFFF, (uint8_t *) &val);   \
+            plic_update_interrupts(rv); return;                   \
+        )                                                         \
+        ,                                                         \
+        IIF(rw)( /* read */                                       \
+            return 0x60 | 0x1;                                    \
+	    ,   /* write */                                       \
+	    write(attr->fd_stdout, &val, 1); return;              \
+	)                                                         \
+    )
+/* clang-format on */
 
 #define MMIO_READ()                                         \
     do {                                                    \
