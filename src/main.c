@@ -193,6 +193,10 @@ void indirect_rv_halt()
 }
 #endif
 
+#if RV32_HAS(T2C)
+extern bool t2c_trigger;
+#endif
+
 int main(int argc, char **args)
 {
     if (argc == 1 || !parse_args(argc, args)) {
@@ -245,6 +249,10 @@ int main(int argc, char **args)
     rv_delete(rv);
 
     printf("inferior exit code %d\n", attr.exit_code);
+
+#if RV32_HAS(T2C)
+    printf("trigger: %d\n", (int) t2c_trigger);
+#endif
 
 end:
     free(attr.data.user);

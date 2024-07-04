@@ -200,7 +200,7 @@ static void *t2c_runloop(void *arg)
             list_del_init(&entry->list);
             pthread_mutex_unlock(&rv->wait_queue_lock);
             t2c_compile(entry->block,
-                        (uint64_t) ((memory_t *) PRIV(rv)->mem)->mem_base);
+                        (uint64_t) ((memory_t *) PRIV(rv)->mem)->mem_base, rv);
             free(entry);
         }
     }

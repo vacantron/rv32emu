@@ -33,6 +33,8 @@ T2C_OP(jal, {
 })
 
 T2C_OP(jalr, {
+    t2c_trigger = true;
+
     if (ir->rd)
         T2C_LLVM_GEN_STORE_IMM32(*builder, ir->pc + 4,
                                  t2c_gen_rd_addr(start, builder, ir));
@@ -40,6 +42,30 @@ T2C_OP(jalr, {
     T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
     val_rs1 = T2C_LLVM_GEN_ALU32_IMM(Add, val_rs1, ir->imm);
     val_rs1 = T2C_LLVM_GEN_ALU32_IMM(And, val_rs1, ~1U);
+    LLVMBuildStore(*builder, val_rs1,
+                   t2c_gen_block_ref_addr(start, builder, ir));
+
+    /* invoke table lookup */
+    LLVMBasicBlockRef trueBlock = LLVMAppendBasicBlock(start, "true");
+    LLVMBasicBlockRef falseBlock = LLVMAppendBasicBlock(start, "false");
+
+    LLVMValueRef args[2];
+    args[0] = LLVMConstInt(LLVMInt64Type(), (long) rv, 0);
+    args[1] = LLVMConstInt(LLVMInt64Type(), (long) map, 0);
+
+    LLVMValueRef ret =
+        LLVMBuildCall2(*builder, t2c_fn_proto, t2c_fn, args, 2, "");
+    LLVMValueRef cmp = LLVMBuildICmp(*builder, LLVMIntNE, ret,
+                                     LLVMConstInt(LLVMInt64Type(), 0, 0), "");
+    LLVMBuildCondBr(*builder, cmp, trueBlock, falseBlock);
+
+    LLVMPositionBuilderAtEnd(*builder, trueBlock);
+    LLVMBuildBr(*builder, (LLVMBasicBlockRef) ret);
+    LLVMBuildUnreachable(*builder);
+
+    LLVMPositionBuilderAtEnd(*builder, falseBlock);
+    /* end */
+
     LLVMBuildStore(*builder, val_rs1, t2c_gen_PC_addr(start, builder, ir));
     LLVMBuildRetVoid(*builder);
 })
@@ -785,15 +811,18 @@ T2C_OP(fuse5, {
         switch (fuse[i].opcode) {
         case rv_insn_slli:
             t2c_slli(builder, param_types, start, entry, taken_builder,
-                     untaken_builder, mem_base, (rv_insn_t *) (&fuse[i]));
+                     untaken_builder, mem_base, (rv_insn_t *) (&fuse[i]), map,
+                     rv);
             break;
         case rv_insn_srli:
             t2c_srli(builder, param_types, start, entry, taken_builder,
-                     untaken_builder, mem_base, (rv_insn_t *) (&fuse[i]));
+                     untaken_builder, mem_base, (rv_insn_t *) (&fuse[i]), map,
+                     rv);
             break;
         case rv_insn_srai:
             t2c_srai(builder, param_types, start, entry, taken_builder,
-                     untaken_builder, mem_base, (rv_insn_t *) (&fuse[i]));
+                     untaken_builder, mem_base, (rv_insn_t *) (&fuse[i]), map,
+                     rv);
             break;
         default:
             __UNREACHABLE;

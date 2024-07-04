@@ -147,6 +147,7 @@ struct riscv_internal {
     struct cache *block_cache;
     struct mpool *chain_entry_mp;
 #if RV32_HAS(T2C)
+    uint32_t block_ref;
     struct list_head wait_queue;
     pthread_mutex_t wait_queue_lock;
     volatile bool quit; /**< Determine the main thread is terminated or not */
