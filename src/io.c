@@ -15,6 +15,13 @@
 
 #include "io.h"
 
+u8250_state_t *u8250_new(){
+	u8250_state_t *uart = malloc(sizeof(u8250_state_t));
+	assert(uart);
+
+	return uart;
+}
+
 plic_t *plic_new(){
 	plic_t *plic = malloc(sizeof(plic_t));
 	assert(plic);

@@ -7,6 +7,35 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
+
+/* UART */
+
+#define IRQ_UART 1
+#define IRQ_UART_BIT (1 << IRQ_UART)
+
+typedef struct {
+    uint8_t dll, dlh;                  /**< divisor (ignored) */
+    uint8_t lcr;                       /**< UART config */
+    uint8_t ier;                       /**< interrupt config */
+    uint8_t current_int, pending_ints; /**< interrupt status */
+    /* other output signals, loopback mode (ignored) */
+    uint8_t mcr;
+    /* I/O handling */
+    int in_fd, out_fd;
+    bool in_ready;
+} u8250_state_t;
+void u8250_update_interrupts(u8250_state_t *uart);
+void u8250_check_ready(u8250_state_t *uart);
+
+uint32_t u8250_read(u8250_state_t *uart, uint32_t addr);
+
+void u8250_write(u8250_state_t *uart,
+                 uint32_t addr,
+                 uint32_t value);
+
+/* create a UART controller */
+u8250_state_t *u8250_new();
 
 typedef struct {
     uint32_t masked;

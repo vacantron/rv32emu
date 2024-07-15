@@ -405,6 +405,9 @@ typedef struct {
 } vm_data_t;
 
 typedef struct {
+    /* uart object */
+    u8250_state_t *uart;
+
     /* plic object */
     plic_t *plic;
 

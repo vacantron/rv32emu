@@ -130,7 +130,7 @@ endif
 ENABLE_JIT ?= 0
 $(call set-feature, JIT)
 ifeq ($(call has, JIT), 1)
-OBJS_EXT += jit.o 
+OBJS_EXT += jit.o
 # tier-2 JIT compiler powered LLVM
 LLVM_CONFIG = llvm-config-17
 LLVM_CONFIG := $(shell which $(LLVM_CONFIG))
@@ -200,6 +200,7 @@ OBJS := \
 	syscall.o \
 	emulate.o \
 	riscv.o \
+	uart.o \
 	elf.o \
 	cache.o \
 	mpool.o \

@@ -205,6 +205,12 @@ struct riscv_internal {
 
     /* The flag to indicate the current emulation is in a trap */
     bool is_trapped;
+    bool is_nested_trapped;
+    uint32_t nested_sepc;
+    uint32_t nested_scause;
+    uint32_t nested_stval;
+
+    uint32_t test;
 };
 
 /* sign extend a 16 bit value */

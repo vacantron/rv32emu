@@ -265,6 +265,7 @@ riscv_t *rv_create(riscv_user_t rv_attr)
 
     /* not being trapped */
     rv->is_trapped = false;
+    rv->is_nested_trapped = false;
 
     /* reset */
     rv_reset(rv, 0U);
@@ -347,6 +348,10 @@ riscv_t *rv_create(riscv_user_t rv_attr)
         attr->plic = plic_new();
         assert(attr->plic);
 
+	/* setup PLIC */
+        attr->uart = u8250_new();
+        assert(attr->uart);
+
         /* reset privilege mode */
         rv->priv_mode = RV_PRIV_S_MODE;
     }
@@ -399,7 +404,7 @@ static void rv_run_and_trace(riscv_t *rv)
 
     vm_attr_t *attr = PRIV(rv);
     assert(attr && attr->data.user && attr->data.user->elf_program);
-    attr->cycle_per_step = 1;
+    attr->cycle_per_step = 100000000;
 
     const char *prog_name = attr->data.user->elf_program;
     elf_t *elf = elf_new();
@@ -595,7 +600,7 @@ void rv_reset(riscv_t *rv, riscv_word_t pc)
     rv->X[rv_reg_sp] = stack_top;
 
     /* reset privilege mode */
-    rv->priv_mode = RV_PRIV_M_MODE;
+    rv->priv_mode = RV_PRIV_S_MODE;
 
     /* reset the csrs */
     rv->csr_mtvec = 0;
