@@ -32,22 +32,38 @@ T2C_OP(jal, {
     }
 })
 
-T2C_OP(jalr, {
-    t2c_trigger = true;
+static void t2c_jalr(LLVMBuilderRef *builder __attribute__((unused)),
+                     LLVMTypeRef *param_types __attribute__((unused)),
+                     LLVMValueRef start __attribute__((unused)),
+                     LLVMBasicBlockRef *entry __attribute__((unused)),
+                     LLVMBuilderRef *taken_builder __attribute__((unused)),
+                     LLVMBuilderRef *untaken_builder __attribute__((unused)),
+                     uint64_t mem_base __attribute__((unused)),
+                     rv_insn_t *ir __attribute__((unused)),
+                     struct LLVM_block_map *map __attribute__((unused)),
+                     riscv_t *rv __attribute__((unused)))
+{
+    t2c_trigger = 1;
 
     if (ir->rd)
-        T2C_LLVM_GEN_STORE_IMM32(*builder, ir->pc + 4,
-                                 t2c_gen_rd_addr(start, builder, ir));
+        LLVMBuildStore(*builder, LLVMConstInt(LLVMInt32Type(), ir->pc + 4, 1),
+                       t2c_gen_rd_addr(start, builder, ir));
 
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    val_rs1 = T2C_LLVM_GEN_ALU32_IMM(Add, val_rs1, ir->imm);
-    val_rs1 = T2C_LLVM_GEN_ALU32_IMM(And, val_rs1, ~1U);
+    LLVMValueRef val_rs1 = LLVMBuildLoad2(
+        *builder, LLVMInt32Type(), t2c_gen_rs1_addr(start, builder, ir), "");
+    val_rs1 = LLVMBuildAdd(*builder, val_rs1,
+                           LLVMConstInt(LLVMInt32Type(), ir->imm, 1), "");
+    val_rs1 = LLVMBuildAnd(*builder, val_rs1,
+                           LLVMConstInt(LLVMInt32Type(), ~1U, 1), "");
     LLVMBuildStore(*builder, val_rs1,
                    t2c_gen_block_ref_addr(start, builder, ir));
 
-    /* invoke table lookup */
-    LLVMBasicBlockRef trueBlock = LLVMAppendBasicBlock(start, "true");
-    LLVMBasicBlockRef falseBlock = LLVMAppendBasicBlock(start, "false");
+    LLVMBasicBlockRef trueBlock = LLVMAppendBasicBlock(start, "true_entry");
+    LLVMBuilderRef builder2 = LLVMCreateBuilder();
+    LLVMPositionBuilderAtEnd(builder2, trueBlock);
+    LLVMBasicBlockRef falseBlock = LLVMAppendBasicBlock(start, "false_entry");
+    LLVMBuilderRef builder3 = LLVMCreateBuilder();
+    LLVMPositionBuilderAtEnd(builder3, falseBlock);
 
     LLVMValueRef args[2];
     args[0] = LLVMConstInt(LLVMInt64Type(), (long) rv, 0);
@@ -59,16 +75,27 @@ T2C_OP(jalr, {
                                      LLVMConstInt(LLVMInt64Type(), 0, 0), "");
     LLVMBuildCondBr(*builder, cmp, trueBlock, falseBlock);
 
-    LLVMPositionBuilderAtEnd(*builder, trueBlock);
-    LLVMBuildBr(*builder, (LLVMBasicBlockRef) ret);
-    LLVMBuildUnreachable(*builder);
+    LLVMBuildCall2(builder2, t2c_fn_debug_proto, t2c_fn_debug, NULL, 0, "");
 
-    LLVMPositionBuilderAtEnd(*builder, falseBlock);
-    /* end */
+    LLVMValueRef label[512]; /* set stack size to 512 */
+    for (size_t i = 0; i < __map->count; i++) {
+        label[i] = LLVMBlockAddress(start, __map->map[i].block);
+    }
+    LLVMValueRef arr =
+        LLVMConstArray2(LLVMPointerTypeInContext(LLVMGetGlobalContext(), 0),
+                        label, __map->count);
 
-    LLVMBuildStore(*builder, val_rs1, t2c_gen_PC_addr(start, builder, ir));
-    LLVMBuildRetVoid(*builder);
-})
+    LLVMValueRef ptr = LLVMBuildInBoundsGEP2(
+        builder2, LLVMPointerTypeInContext(LLVMGetGlobalContext(), 0), arr,
+        &ret, 1, "");
+    LLVMValueRef __ref = LLVMBuildIndirectBr(builder2, ptr, __map->count);
+    for (size_t i = 0; i < __map->count; i++) {
+        LLVMAddDestination(__ref, __map->map[i].block);
+    }
+
+    LLVMBuildStore(builder3, val_rs1, t2c_gen_PC_addr(start, &builder3, ir));
+    LLVMBuildRetVoid(builder3);
+}
 
 #define BRANCH_FUNC(type, cond)                                             \
     T2C_OP(type, {                                                          \

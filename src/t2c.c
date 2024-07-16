@@ -26,6 +26,8 @@ struct LLVM_block_map {
     struct LLVM_block_map_entry map[MAX_BLOCKS];
 };
 
+struct LLVM_block_map *__map;
+
 FORCE_INLINE void t2c_block_map_insert(struct LLVM_block_map *map,
                                        LLVMBasicBlockRef *entry,
                                        uint32_t pc)
@@ -139,6 +141,8 @@ FORCE_INLINE void t2c_gen_call_io_func(LLVMValueRef start,
 
 LLVMTypeRef t2c_fn_proto;
 LLVMValueRef t2c_fn;
+LLVMTypeRef t2c_fn_debug_proto;
+LLVMValueRef t2c_fn_debug;
 bool t2c_trigger;
 
 #include "t2c_template.c"
@@ -176,8 +180,18 @@ FORCE_INLINE bool t2c_insn_is_terminal(uint8_t opcode)
 
 long t2c_test_fn(long rv, long map)
 {
-    return (long) t2c_block_map_search((struct LLVM_block_map *) map,
-                                       ((riscv_t *) rv)->block_ref);
+    for (uint32_t i = 1; i < ((struct LLVM_block_map *) map)->count; i++) {
+        if (((struct LLVM_block_map *) map)->map[i].pc ==
+            ((riscv_t *) rv)->block_ref) {
+            return (long) i;
+        }
+    }
+    return (long) NULL;
+}
+
+void t2c_debug()
+{
+    printf("found\n");
 }
 
 typedef void (*t2c_codegen_block_func_t)(LLVMBuilderRef *builder UNUSED,
@@ -264,6 +278,9 @@ void t2c_compile(block_t *block, uint64_t mem_base, riscv_t *rv)
     t2c_fn_proto = LLVMFunctionType(LLVMInt64Type(), ty, 2, 0);
     t2c_fn = LLVMAddFunction(module, "t2c_test_fn", t2c_fn_proto);
 
+    t2c_fn_debug_proto = LLVMFunctionType(LLVMVoidType(), NULL, 0, 0);
+    t2c_fn_debug = LLVMAddFunction(module, "t2c_debug", t2c_fn_debug_proto);
+
     LLVMTypeRef io_members[] = {
         LLVMPointerType(LLVMVoidType(), 0), LLVMPointerType(LLVMVoidType(), 0),
         LLVMPointerType(LLVMVoidType(), 0), LLVMPointerType(LLVMVoidType(), 0),
@@ -290,6 +307,7 @@ void t2c_compile(block_t *block, uint64_t mem_base, riscv_t *rv)
     set_reset(&set);
     struct LLVM_block_map map;
     map.count = 0;
+    __map = &map;
     /* Translate custon IR into LLVM IR */
     t2c_trace_ebb(&builder, param_types, start, &entry, mem_base,
                   block->ir_head, &set, &map, rv);
@@ -326,8 +344,11 @@ void t2c_compile(block_t *block, uint64_t mem_base, riscv_t *rv)
         abort();
     }
 
-    if (t2c_trigger)
+    if (t2c_trigger) {
         LLVMAddGlobalMapping(engine, t2c_fn, t2c_test_fn);
+        LLVMAddGlobalMapping(engine, t2c_fn_debug, t2c_debug);
+        // LLVMPrintModuleToFile(module, "IR.ll", &error);
+    }
 
     /* Return the function pointer of T2C generated machine code */
     block->func = (exec_t2c_func_t) LLVMGetPointerToGlobal(engine, start);
