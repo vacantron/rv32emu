@@ -3,6 +3,8 @@
  * "LICENSE" for information on usage and redistribution of this file.
  */
 
+int emu_cnt = 1;
+
 #include <assert.h>
 #include <setjmp.h>
 #include <stdbool.h>
@@ -116,13 +118,14 @@ static jmp_buf nested_env;
 #define TRAP_HANDLER_IMPL(type, code)                                         \
     static void rv_trap_##type(riscv_t *rv, uint32_t mtval)                   \
     {                                                                         \
+	    /*
 	if(rv->is_nested_trapped){\
         rv->nested_sepc = rv->PC;\
         rv->nested_scause = rv->csr_scause;\
         rv->nested_stval = rv->csr_stval;\
 		printf("nested!\n");\
 		exit(1);\
-	} \
+	} \ */\
         /* m/stvec (Machine/Supervisor Trap-Vector Base Address Register)     \
          * m/stvec[MXLEN-1:2]: vector base address                            \
          * m/stvec[1:0] : vector mode                                         \
@@ -155,14 +158,8 @@ static jmp_buf nested_env;
 		rv->PC, rv->csr_stvec & ~0x3, code, mtval, rv->priv_mode == 1 ? "S_mode" : "U_mode", \
 		(rv->csr_sstatus & SSTATUS_SUM) >> SSTATUS_SUM_SHIFT, rv->csr_satp);\
 		*/\
-	if((mtval >> 20) == 0x957){\
-		if(!can_trapped){\
-		}\
-	}\
         rv->csr_stval = mtval;                                                \
         rv->csr_scause = code;                                                \
-	if(base != 0xc00022b8)\
-	    rv->is_trapped = false;\
         switch (mode) {                                                       \
         /* DIRECT: All traps set PC to base */                                \
         case 0:                                                               \
@@ -315,10 +312,6 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
         out &= FFLAG_MASK;
 #endif
 
-    if (c == &rv->csr_sepc) {
-            //printf("before PC: 0x%x, csrrw spec value: 0x%x\n", rv->PC, *c);
-    }
-
     if (c == &rv->csr_satp) {
         // printf("satp val: 0x%x, csr: 0x%x\n", val, csr);
         const uint8_t mode_sv32 = val >> 31;
@@ -338,10 +331,6 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
 	}
 
         *c = val;
-    }
-
-    if (c == &rv->csr_sepc) {
-            //printf("after PC: 0x%x, csrrw spec value: 0x%x, 0x%x\n", rv->PC, *c, val);
     }
 
     if (c == &rv->csr_sie && val == 1) {
@@ -564,19 +553,14 @@ static bool has_loops = false;
     static bool do_##inst(riscv_t *rv, rv_insn_t *ir, uint64_t cycle,         \
                           uint32_t PC)                                        \
     {                                                                         \
+	emu_cnt--;\
         /*printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: \
          * 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm);*/     \
         cycle++;                                                              \
-	if(rv->is_trapped){\
-	}\
-	if(rv->PC == 0xc00022b8){\
-	}\
         code;                                                                 \
-        if(rv->PC == 0xc0002354){\
-	}\
-	if((PC >> 20) == 0x957 || ((rv->PC >> 20) == 0x957)){\
-	}\
     nextop:                                                                   \
+	/* If store/load page fault occurs, stop the execution */ \
+	/* since PC is updated in rv_trap_xxx */ \
 	if(rv->is_trapped){\
 		rv->is_trapped = false;\
 		return true;\
@@ -585,15 +569,11 @@ static bool has_loops = false;
         if (unlikely(RVOP_NO_NEXT(ir))) {                                     \
             goto end_op;                                                      \
         }                                                                     \
-	if((PC >> 20) == 0x957 || ((rv->PC >> 20) == 0x957)){\
-	}\
         const rv_insn_t *next = ir->next;                                     \
         MUST_TAIL return next->impl(rv, next, cycle, PC);                     \
     end_op:                                                                   \
         rv->csr_cycle = cycle;                                                \
         rv->PC = PC;                                                          \
-	if((PC >> 20) == 0x957 || ((rv->PC >> 20) == 0x957)){\
-	}\
         return true;                                                          \
     }
 
@@ -652,11 +632,12 @@ static bool do_fuse3(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
         uint32_t addr = rv->X[fuse[i].rs1] + fuse[i].imm;
         RV_EXC_MISALIGN_HANDLER(3, store, false, 1);
         rv->io.mem_write_w(rv, addr, rv->X[fuse[i].rs2]);
+	if(rv->is_trapped){
+		printf("is trapped fault in fuse!\n");
+		exit(1);
+	}
     }
     PC += ir->imm2 * 4;
-	if((PC >> 20) == 0x957 || ((rv->PC >> 20) == 0x957)){
-		//exit(1);
-	}
     if (unlikely(RVOP_NO_NEXT(ir))) {
         rv->csr_cycle = cycle;
         rv->PC = PC;
@@ -679,11 +660,12 @@ static bool do_fuse4(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
         uint32_t addr = rv->X[fuse[i].rs1] + fuse[i].imm;
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
         rv->X[fuse[i].rd] = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		printf("is trapped fault in fuse!\n");
+		exit(1);
+	}
     }
     PC += ir->imm2 * 4;
-	if((PC >> 20) == 0x957 || ((rv->PC >> 20) == 0x957)){
-		//exit(1);
-	}
     if (unlikely(RVOP_NO_NEXT(ir))) {
         rv->csr_cycle = cycle;
         rv->PC = PC;
@@ -800,9 +782,49 @@ static void block_translate(riscv_t *rv, block_t *block)
 		//printf("handle exception\n");
 		//exit(1);
 	}
+
+	if(rv->PC == 0xc03297a0) {
+		//printf("block by waiting boot thread call schedule()\n");
+		//exit(1);
+	}
+
+	if(rv->PC == 0xc03297a4) {
+		//printf("scheduled preempt disable\n");
+		//exit(1);
+	}
+
+	if(rv->PC == 0xc03298b0) {
+		//printf("kernel init pid 1 success\n");
+		//exit(1);
+	}
+
+	if(rv->PC == 0xc03261cc || rv->PC == 0xc03261a0) {
+		//printf("try to run init process\n");
+		//exit(1);
+	}
+
+	if(rv->PC == 0xc03261b8) {
+		//printf("run init process\n");
+		//exit(1);
+	}
+
+	if(rv->PC == 0xc03297b4) {
+		//printf("cpu startup entry\n");
+		//exit(1);
+	}
+
+	if(rv->PC == 0xc03298b0) {
+		//printf("kernel init pid 1 success\n");
+		//exit(1);
+	}
+
+
 	if(rv->is_trapped && insn == 0){
+		rv->is_trapped = false;
                 memset(ir, 0, sizeof(rv_insn_t));
 		block->pc_end = rv->PC;
+
+		/* should not cause trap */
 		insn = rv->io.mem_ifetch(rv, block->pc_end);
 		//printf("retry!, new insn: %x\n", insn);
 	}
@@ -811,15 +833,10 @@ static void block_translate(riscv_t *rv, block_t *block)
         if (!rv_decode(ir, insn)) {
 	    printf("break here, insn: 0x%x, PC: 0x%x, pc_end: 0x%x\n", insn, rv->PC, block->pc_end);
             rv->compressed = is_compressed(insn);
-	    if(rv->is_trapped)
-		    rv->is_nested_trapped = true;
             rv_trap_illegal_insn(rv, insn);
             break;
         }
-
-        ir->impl = dispatch_table[ir->opcode];
-        ir->pc = block->pc_end;
-        /* compute the end of pc */
+ir->impl = dispatch_table[ir->opcode]; ir->pc = block->pc_end; /* compute the end of pc */
         block->pc_end += is_compressed(insn) ? 2 : 4;
         block->n_insn++;
         prev_ir = ir;
@@ -843,9 +860,6 @@ static void block_translate(riscv_t *rv, block_t *block)
         }
 
         ir = mpool_alloc(rv->block_ir_mp);
-    }
-    if(rv->PC == 0xc00022b8){
-    printf("prev_ir here\n");
     }
 
     prev_pc = block->pc_start;
@@ -911,6 +925,8 @@ static void match_pattern(riscv_t *rv, block_t *block)
         int32_t count = 0;
         switch (ir->opcode) {
         case rv_insn_lui:
+	    printf("COMBINE here\n");
+	    exit(1);
             next_ir = ir->next;
             switch (next_ir->opcode) {
             case rv_insn_add:
@@ -954,9 +970,13 @@ static void match_pattern(riscv_t *rv, block_t *block)
          * are contiguous, combine these instructions.
          */
         case rv_insn_sw:
+	    printf("COMBINE here\n");
+	    exit(1);
             COMBINE_MEM_OPS(0);
             break;
         case rv_insn_lw:
+	    printf("COMBINE here\n");
+	    exit(1);
             COMBINE_MEM_OPS(1);
             break;
             /* TODO: mixture of SW and LW */
@@ -964,6 +984,8 @@ static void match_pattern(riscv_t *rv, block_t *block)
         case rv_insn_slli:
         case rv_insn_srli:
         case rv_insn_srai:
+	    printf("COMBINE here\n");
+	    exit(1);
             count = 1;
             next_ir = ir->next;
             while (1) {
@@ -1028,6 +1050,7 @@ static void optimize_constant(riscv_t *rv UNUSED, block_t *block)
 static block_t *prev = NULL;
 static block_t *block_find_or_translate(riscv_t *rv)
 {
+emu_cnt++;
 #if !RV32_HAS(JIT)
     block_map_t *map = &rv->block_map;
     /* lookup the next block in the block map */
@@ -1283,28 +1306,7 @@ void rv_step(void *arg)
         block_t *block = block_find_or_translate(rv);
         /* by now, a block should be available */
         assert(block);
-	//prev_pc = rv->PC;
-	//printf("block start: 0x%x, end: 0x%x\n", block->pc_start, block->pc_end);
-	//
-	if((rv->PC >> 20) == 0x957 || ((block->pc_start >> 20) == 0x957) ||((block->pc_end >> 20) == 0x957) ){
-		//printf("a2 is 0x957!!!\n");
-		//printf("PC: 0x%x\n", rv->PC);
-		//exit(1);
-	}
-
-	//
-
-	//if((rv->X[12] >> 20) == 0x957 && ((rv->X[12] & MASK(12)) == 0xa20)){
-	//	printf("a2: 0x%x\n", rv->X[12]);
-	//	printf("PC: 0x%x\n", rv->PC);
-	//	//exit(1);
-	//}
-
-	//if((rv->csr_sepc >> 20) == 0x957){
-	//	printf("sepc not 0!, 0x%x\n", rv->csr_sepc);
-	//	printf("PC: 0x%x\n", rv->PC);
-	//	//exit(1);
-	//}
+        assert(block->n_insn == 1);
 
         /* After emulating the previous block, it is determined whether the
          * branch is taken or not. The IR array of the current block is then
@@ -1335,19 +1337,16 @@ void rv_step(void *arg)
 
         /* execute the block by interpreter */
         const rv_insn_t *ir = block->ir_head;
-	if(rv->PC == 0xc00022b8){
-		//printf("22b8 rv_step\n");
-		//exit(1);
-	}
-	if(rv->is_trapped){
-		//printf("PC: %x\n", rv->PC);
-	//	exit(1);
-	}
         if (unlikely(!ir->impl(rv, ir, rv->csr_cycle, rv->PC))) {
             /* block should not be extended if execption handler invoked */
             prev = NULL;
             break;
         }
+	//if(emu_cnt != 1){
+	//	printf("emu cnt: %d\n", emu_cnt);
+	//	printf("emu not step by step!\n");
+	//	exit(1);
+	//}
         prev = block;
     }
 }
@@ -1365,26 +1364,8 @@ static void trap_handler(riscv_t *rv)
     //printf("sstatus: 0x%x\n", rv->csr_sstatus);
     //rv->csr_sstatus |= (1U << 18);
     while (rv->is_trapped || rv->is_nested_trapped) { /* set to false by sret/mret implementation */
-	//printf("trap handler first address: 0x%x\n", rv->PC);
-	////exit(1);
 	count++;
-	//printf("trap handler PC: 0x%x\n", rv->PC);
-	////exit(1);
-	if(rv->PC >= 0xc00022b8 && rv->csr_sepc != 0x98){
-		//printf("trap handler PC: 0x%x\n", rv->PC);
-		//exit(1);
-	}
         insn = rv->io.mem_ifetch(rv, rv->PC);
-
-	//if(rv->PC == 0xc03261bc){
-	//	printf("nested trap in trap handler\n");
-	//	//exit(1);
-	//}
-
-	//if(rv->PC == 0xc03261bc){
-	//	printf("a0 in 61bc: 0x%x\n", rv->X[10]);
-	//	//exit(1);
-	//}
 
         rv_decode(ir, insn);
 	//printf("trap handling..., PC: 0x%x, ir_opcode: %d, insn: 0x%x\n", rv->PC, ir->opcode, insn);
@@ -1392,22 +1373,6 @@ static void trap_handler(riscv_t *rv)
         ir->impl = dispatch_table[ir->opcode];
         rv->compressed = is_compressed(insn);
         ir->impl(rv, ir, rv->csr_cycle, rv->PC);
-
-	if(((rv->PC >> 20) == 0x957)){
-		//printf("PC957: 0x%x\n", rv->PC);
-		//printf("prev: 0x%x\n", prev_pc);
-		//exit(1);
-	}
-
-	//if(do_once){
-	//	do_once = false;
-	//	break;
-	//}
-
-	//if(rv->PC == 0xc00000b4){
-	//    printf("ready to return from BASE to 0x%x\n", (rv->X[ir->rs1] + ir->imm) & ~1U);
-	//    rv->is_trapped = false;
-	//}
     };
     printf("$$$$$$$$$$$$$$trap handler\n\n");
     //rv->csr_sstatus &= ~(1U << 18);
@@ -1489,10 +1454,10 @@ static uint32_t *mmu_walk(riscv_t *rv,
             if (*level == 1 &&
                 unlikely(ppn & MASK(10))) /* misaligned superpage */
                 return NULL;
-	    //if(*level == 2){
-	    //        printf("first level 2\n");
-	    //        //exit(1);
-	    //}
+	    if(*level == 2){
+	            //printf("level 2 found\n");
+	            //exit(1);
+	    }
 	    //printf("level one found\n");
 	    //if(*level == 2){
 	    //        printf("pte found, addr: 0x%x\n", pte);
@@ -1501,20 +1466,10 @@ static uint32_t *mmu_walk(riscv_t *rv,
             return pte; /* leaf PTE */
         case 0b0101:
         case 0b1101:
+	default:
+            *pte_ref = NULL;
             return NULL;
         }
-    }
-
-	    //if(*level == 2){
-	    //        printf("first level 2 outside, addr: 0x%x\n", addr);
-	    //        printf("satp: 0x%x\n", rv->csr_satp);
-	    //        ////exit(1);
-	    //}
-
-    //printf("pte not found, addr: 0x%x\n", addr);
-    ////exit(1);
-    if((addr >> 20) == 0x957){
-    	//printf("957 not found, PC: 0x%x\n", rv->PC);
     }
 
     return NULL;
@@ -1535,53 +1490,27 @@ static uint32_t *mmu_walk(riscv_t *rv,
     static bool mmu_##op##_fault_check(riscv_t *rv, uint32_t *pte,             \
                                        uint32_t addr, uint32_t access_bits)    \
     {                                                                          \
-        if (pte && (!(*pte & PTE_V) || (!(*pte & PTE_R) && (*pte & PTE_W)))) { \
-	    if(rv->is_trapped)\
-	        rv->is_nested_trapped = true;\
-	    else\
-                rv->is_trapped = true;                                             \
+        if (!(pte && (*pte & access_bits))) {                    \
+		/*
+	    printf("access_bits: %d\n", access_bits);\
+	    printf("addr: %x\n", addr);\
+	    printf("pc: %x\n", rv->PC);\
+	    printf("here found but not valid\n");\
+	    if((addr >> 20) == 0x957){\
+	    	exit(1);\
+	    }\
+	    */\
+            /* reset in RVOP */                                \
+            rv->is_trapped = true;                                             \
             rv_trap_##pgfault(rv, addr);                                       \
-            return true;                                                      \
-        }                                                                      \
-        if (pte && (!(*pte & PTE_X) && (access_bits & PTE_X))) {               \
-	    if(rv->is_trapped)\
-	        rv->is_nested_trapped = true;\
-	    else\
-                rv->is_trapped = true;                                             \
-            rv_trap_##pgfault(rv, addr);                                       \
-            return true;                                                      \
-        }                                                                      \
-        if (pte &&                                                             \
-            ((!(SSTATUS_MXR & rv->csr_sstatus) && !(*pte & PTE_R) &&           \
-              (access_bits & PTE_R)) ||                                        \
-             ((SSTATUS_MXR & rv->csr_sstatus) &&                               \
-              !((*pte & PTE_R) | (*pte & PTE_X)) && (access_bits & PTE_R)))) { \
-	    if(rv->is_trapped)\
-	        rv->is_nested_trapped = true;\
-	    else\
-                rv->is_trapped = true;                                             \
-            rv_trap_##pgfault(rv, addr);                                       \
-            return true;                                                      \
-        }                                                                      \
-        if (pte && (MSTATUS_MPRV & rv->csr_mstatus &&                          \
-                    rv->priv_mode == RV_PRIV_S_MODE)) {                        \
-            if (!(MSTATUS_SUM & rv->csr_mstatus) && (*pte & PTE_U)) {          \
-	        if(rv->is_trapped)\
-	            rv->is_nested_trapped = true;\
-	        else\
-                    rv->is_trapped = true;                                         \
-                rv_trap_##pgfault(rv, addr);                                   \
-                return true;                                                  \
-            }                                                                  \
+            return false;                                                       \
         }                                                                      \
         /* PTE not found, map it in handler */                                 \
-        if (!pte && rv->csr_satp) {                                            \
-	    if(rv->is_trapped)\
-	        rv->is_nested_trapped = true;\
-	    else\
-                rv->is_trapped = true;                                             \
+        if (!pte) {                                            \
+            /* reset in RVOP */                                \
+            rv->is_trapped = true;                                             \
             rv_trap_##pgfault(rv, addr);                                       \
-            return rv->is_trapped ? false : true;                                                       \
+            return false;                                                       \
         }                                                                      \
         /* valid PTE */                                                        \
         return true;                                                           \
@@ -1592,6 +1521,8 @@ MMU_FAULT_CHECK_IMPL(read, pagefault_load)
 MMU_FAULT_CHECK_IMPL(write, pagefault_store)
 
 #define get_ppn_and_offset(ppn, offset)                       \
+    uint32_t ppn;\
+    uint32_t offset;\
     do {                                                      \
         ppn = *pte >> (RV_PG_SHIFT - 2) << RV_PG_SHIFT;       \
         offset = level == 1 ? addr & MASK((RV_PG_SHIFT + 10)) \
@@ -1600,14 +1531,8 @@ MMU_FAULT_CHECK_IMPL(write, pagefault_store)
 
 uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
 {
-	//if((addr >> 20) == 0x957){
-	//	printf("fetch 0x957\n");
-	//	printf("prev PC: 0x%x\n", prev_pc);
-	//	//exit(1);
-	//}
-	//if(addr >= 0xc00022b8 && addr <= 0xc0002358){
-	//	printf("mmu ifetch addr: 0x%x, sepc: 0x%x\n", addr, rv->csr_sepc);
-	//}
+    if(!rv->csr_satp)
+    	return memory_ifetch(addr);
 
     uint32_t level;
     uint32_t *pte_ref;
@@ -1617,13 +1542,8 @@ uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
         return 0;
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
-        get_ppn_and_offset(ppn, offset);
-        return memory_ifetch(ppn | offset);
-    }
-    return memory_ifetch(addr);
+    get_ppn_and_offset(ppn, offset);
+    return memory_ifetch(ppn | offset);
 }
 
 static void emu_update_uart_interrupts(riscv_t *vm)
@@ -1647,6 +1567,7 @@ uint8_t ret_char;
 #define MMIO_OP(io, rw)                                           \
     IIF(io)( /* PLIC */                                           \
         IIF(rw)( /* read */                                       \
+		printf("plic read addr: %x\n", (addr & 0x3FFFFFF) >> 2);\
             read_val = plic_read(rv, (addr & 0x3FFFFFF) >> 2);           \
 	    plic_update_interrupts(rv); return read_val;          \
 	    ,     /* write */                                     \
@@ -1698,9 +1619,16 @@ uint8_t ret_char;
 
 uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
 {
+    if(!rv->csr_satp)
+    	return memory_read_w(addr);
+
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+	    if(addr == 0){
+	    	printf("find root cause read word!\n");
+		//exit(1);
+	    }
     bool ok = MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_read_w 22b8\n");
@@ -1711,9 +1639,7 @@ uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
 
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
+    {
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
         const vm_attr_t *attr = PRIV(rv);
@@ -1727,14 +1653,23 @@ uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
         }
         MMIO_READ();
     }
-    return memory_read_w(addr);
 }
 
 uint16_t mmu_read_s(riscv_t *rv, const uint32_t addr)
 {
+    if(!rv->csr_satp)
+    	return memory_read_s(addr);
+
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+	    if(addr == 0){
+		//uint32_t insn;
+        	//insn = rv->io.mem_ifetch(rv, rv->PC);
+		//printf("insn: %x\n", insn);
+		//printf("a5 val: %x\n", rv->X[15]);
+	    	//printf("find root cause read short!\n");
+	    }
     bool ok = MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_read_s 22b8\n");
@@ -1745,9 +1680,7 @@ uint16_t mmu_read_s(riscv_t *rv, const uint32_t addr)
 
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
+    {
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
         const vm_attr_t *attr = PRIV(rv);
@@ -1755,14 +1688,20 @@ uint16_t mmu_read_s(riscv_t *rv, const uint32_t addr)
             return memory_read_s(addr);
         }
     }
-    return memory_read_s(addr);
 }
 
 uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
 {
+    if(!rv->csr_satp)
+    	return memory_read_b(addr);
+
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+	    if(addr == 0){
+	    	printf("find root cause read byte!\n");
+		exit(1);
+	    }
     bool ok = MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_read_b 22b8\n");
@@ -1773,9 +1712,7 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
 
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
+    {
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
         const vm_attr_t *attr = PRIV(rv);
@@ -1785,24 +1722,22 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
 
         MMIO_READ();
     }
-    return memory_read_b(addr);
 }
 
 void mmu_write_w(riscv_t *rv, const uint32_t addr, const uint32_t val)
 {
-	if((addr >> 20) == 0x957 && can_trapped){
-		//printf("PC: 0x%x\n", rv->PC);
-		//printf("a0: 0x%x\n", rv->X[10]);
-		//printf("write 0x957, addr: 0x%x\n", addr);
-	}
-
 	prev_pc = rv->PC;
-	if(rv->PC == 0xc03261bc){
-		//printf("bc\n");
-	}
+
+    if(!rv->csr_satp)
+    	return memory_write_w(addr, (uint8_t *) &val);
+
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+	    if(addr == 0){
+	    	printf("find root cause!\n");
+		exit(1);
+	    }
     bool ok = MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_write_w 22b8, ok: %d\n", ok);
@@ -1817,9 +1752,7 @@ void mmu_write_w(riscv_t *rv, const uint32_t addr, const uint32_t val)
 
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
+    {
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
 
@@ -1840,14 +1773,20 @@ void mmu_write_w(riscv_t *rv, const uint32_t addr, const uint32_t val)
 
         MMIO_WRITE();
     }
-    return memory_write_w(addr, (uint8_t *) &val);
 }
 
 void mmu_write_s(riscv_t *rv, const uint32_t addr, const uint16_t val)
 {
+    if(!rv->csr_satp)
+    	return memory_write_s(addr, (uint8_t *) &val);
+
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+	    if(addr == 0){
+	    	printf("find root cause!\n");
+		exit(1);
+	    }
     bool ok = MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_write_s 22b8\n");
@@ -1858,9 +1797,7 @@ void mmu_write_s(riscv_t *rv, const uint32_t addr, const uint16_t val)
 
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
+    {
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
         const vm_attr_t *attr = PRIV(rv);
@@ -1869,14 +1806,20 @@ void mmu_write_s(riscv_t *rv, const uint32_t addr, const uint16_t val)
             return;
         }
     }
-    return memory_write_s(addr, (uint8_t *) &val);
 }
 
 void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
 {
+    if(!rv->csr_satp)
+    	return memory_write_b(addr, (uint8_t *) &val);
+
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+	    if(addr == 0){
+	    	printf("find root cause!\n");
+		exit(1);
+	    }
     bool ok = MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_write_b 22b8\n");
@@ -1887,20 +1830,17 @@ void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
 
     pte = pte_ref; /* PTE should be valid now */
 
-    if (rv->csr_satp) {
-        uint32_t ppn;
-        uint32_t offset;
-        get_ppn_and_offset(ppn, offset);
-        const uint32_t oaddr = addr;
-        const uint32_t addr = ppn | offset;
-        const vm_attr_t *attr = PRIV(rv);
-        if (addr < attr->mem->mem_size) {
-            memory_write_b(addr, (uint8_t *) &val);
-            return;
-        }
-        MMIO_WRITE();
+    {
+    get_ppn_and_offset(ppn, offset);
+    const uint32_t oaddr = addr;
+    const uint32_t addr = ppn | offset;
+    const vm_attr_t *attr = PRIV(rv);
+    if (addr < attr->mem->mem_size) {
+        memory_write_b(addr, (uint8_t *) &val);
+        return;
     }
-    return memory_write_b(addr, (uint8_t *) &val);
+    MMIO_WRITE();
+    }
 }
 
 riscv_io_t mmu_io = {
@@ -1935,8 +1875,10 @@ void ecall_handler(riscv_t *rv)
 #if RV32_HAS(SYSTEM)
     // printf("ecall here, priv mode: %d\n", rv->priv_mode);
     if (rv->priv_mode == RV_PRIV_U_MODE) {
-        rv->is_trapped = true; /* syscall vector table defined by supervisor */
+        //printf("U mode ecall before pc: %x\n", rv->PC);
         rv_trap_ecall_U(rv, 0);
+        //printf("U mode ecall after pc: %x\n", rv->PC);
+	//exit(1);
     } else if (rv->priv_mode ==
                RV_PRIV_S_MODE) { /* trap to SBI syscall handler */
         // printf("S mode ecall\n");
@@ -1960,9 +1902,10 @@ void memset_handler(riscv_t *rv)
     memset((char *) m->mem_base + rv->X[rv_reg_a0], rv->X[rv_reg_a1],
            rv->X[rv_reg_a2]);
     rv->PC = rv->X[rv_reg_ra] & ~1U;
-	if(((rv->PC >> 20) == 0x957)){
-		//exit(1);
-	}
+    if(rv->is_trapped){
+    	printf("memset handler trap\n");
+	exit(1);
+    }
 }
 
 void memcpy_handler(riscv_t *rv)
@@ -1971,9 +1914,10 @@ void memcpy_handler(riscv_t *rv)
     memcpy((char *) m->mem_base + rv->X[rv_reg_a0],
            (char *) m->mem_base + rv->X[rv_reg_a1], rv->X[rv_reg_a2]);
     rv->PC = rv->X[rv_reg_ra] & ~1U;
-	if(((rv->PC >> 20) == 0x957)){
-		//exit(1);
-	}
+    if(rv->is_trapped){
+    	printf("memcpy handler trap\n");
+	exit(1);
+    }
 }
 
 void dump_registers(riscv_t *rv, char *out_file_path)

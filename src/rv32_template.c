@@ -537,6 +537,11 @@ RVOP(
 RVOP(
     lb,
     {
+	uint8_t tmp = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         rv->X[ir->rd] =
             sign_extend_b(rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm));
     },
@@ -555,6 +560,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
         RV_EXC_MISALIGN_HANDLER(1, load, false, 1);
+	uint16_t tmp = rv->io.mem_read_s(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         rv->X[ir->rd] = sign_extend_h(rv->io.mem_read_s(rv, addr));
     },
     GEN({
@@ -577,6 +587,11 @@ RVOP(
 	//	printf("imm: 0x%x\n", ir->imm);
 	//}
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         rv->X[ir->rd] = rv->io.mem_read_w(rv, addr);
         //if(rv->PC == 0xc0002470){
 	//	printf("a2: 0x%x\n", rv->X[ir->rd]);
@@ -594,7 +609,14 @@ RVOP(
 /* LBU: Load Byte Unsigned */
 RVOP(
     lbu,
-    { rv->X[ir->rd] = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm); },
+    {
+	uint8_t tmp = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
+    rv->X[ir->rd] = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm);
+    },
     GEN({
         mem;
         rald, VR0, rs1;
@@ -609,7 +631,18 @@ RVOP(
     lhu,
     {
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
+    if(addr == 0){
+    	printf("lhu at 0 !!!\n");
+    	printf("rv->X[rs1]: %d\n", rv->X[ir->rs1]);
+    	printf("imm: %d\n", ir->imm);
+    	printf("PC: %x\n", rv->PC);
+    }
         RV_EXC_MISALIGN_HANDLER(1, load, false, 1);
+	uint16_t tmp = rv->io.mem_read_s(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         rv->X[ir->rd] = rv->io.mem_read_s(rv, addr);
     },
     GEN({
@@ -630,7 +663,9 @@ RVOP(
 /* SB: Store Byte */
 RVOP(
     sb,
-    { rv->io.mem_write_b(rv, rv->X[ir->rs1] + ir->imm, rv->X[ir->rs2]); },
+    {
+    rv->io.mem_write_b(rv, rv->X[ir->rs1] + ir->imm, rv->X[ir->rs2]);
+    },
     GEN({
         mem;
         rald, VR0, rs1;
@@ -1015,8 +1050,10 @@ RVOP(
 RVOP(
     wfi,
     {
+        PC += 4;
         /* FIXME: Implement */
-	return false;
+    	goto end_op;
+	//return false;
     },
     GEN({
         assert; /* FIXME: Implement */
@@ -1072,6 +1109,7 @@ RVOP(
     	//printf("sret sum sstatus: 0x%x \n", (rv->csr_sstatus & SSTATUS_SUM) >> SSTATUS_SUM_SHIFT);
     	//printf("sret after sstatus: 0x%x\n", rv->csr_sstatus);
 	//exit(1);
+	//printf("restore sepc: %x\n", rv->csr_sepc);
         rv->PC = rv->csr_sepc;
 	//printf("--------------------\n");
 	//printf("sret spp: %d\n", rv->priv_mode);
@@ -1176,8 +1214,6 @@ RVOP(
 RVOP(
     csrrw,
     {
-	//printf("***********before PC: 0x%x, old spec: 0x%x\n", rv->PC, rv->csr_sepc);
-
 	//if(ir->imm == CSR_SEPC){
 	//printf("xxxxxrd: %d, rd: 0x%x, a2: 0x%x\n", ir->rd, rv->X[ir->rd], rv->X[12]);
 	//}
@@ -1486,6 +1522,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         if (ir->rd)
             rv->X[ir->rd] = rv->io.mem_read_w(rv, addr);
         /* skip registration of the 'reservation set'
@@ -1523,6 +1564,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1539,6 +1585,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1556,6 +1607,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1573,6 +1629,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1590,6 +1651,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1607,6 +1673,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1626,6 +1697,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1645,6 +1721,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1662,6 +1743,11 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
@@ -1684,6 +1770,11 @@ RVOP(
         /* copy into the float register */
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
+	uint32_t tmp = rv->io.mem_read_w(rv, addr);
+	if(rv->is_trapped){
+		rv->is_trapped = false;
+		return true;
+	}
         rv->F[ir->rd].v = rv->io.mem_read_w(rv, addr);
     },
     GEN({
