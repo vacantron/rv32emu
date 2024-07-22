@@ -50,24 +50,24 @@ uint32_t prev_pc;
 
 /* RISC-V trap code list */
 /* clang-format off */
-#define RV_TRAP_LIST                                                                  \
-    IIF(RV32_HAS(EXT_C))(,                                                            \
-        _(insn_misaligned, 0)              /* Instruction address misaligned */       \
-    )                                                                                 \
-    _(illegal_insn, 2)                     /* Illegal instruction */                  \
-    _(breakpoint, 3)                       /* Breakpoint */                           \
-    _(load_misaligned, 4)                  /* Load address misaligned */              \
-    _(store_misaligned, 6)                 /* Store/AMO address misaligned */         \
-    _(ecall_M, 11)                         /* Environment call from M-mode */         \
-    IIF(RV32_HAS(SYSTEM))(                                                            \
-        _(ecall_U, 8)                      /* Environment call from U-mode */         \
-        _(ecall_S, 9)                      /* Environment call from S-mode */         \
-        _(pagefault_insn, 12)              /* Instruction page fault */               \
-        _(pagefault_load, 13)              /* Load page fault */                      \
-        _(pagefault_store, 15)             /* Store page fault */                     \
-	_(supervisor_sw_intr, 1)           /* Supervisor software interrupt */        \
-        _(supervisor_timer_intr, 5)        /* Supervisor timer interrupt */           \
-        _(supervisor_external_intr, 9)     /* Supervisor external interrupt */        \
+#define RV_TRAP_LIST                                                                               \
+    IIF(RV32_HAS(EXT_C))(,                                                                         \
+        _(insn_misaligned, 0)                           /* Instruction address misaligned */       \
+    )                                                                                              \
+    _(illegal_insn, 2)                                  /* Illegal instruction */                  \
+    _(breakpoint, 3)                                    /* Breakpoint */                           \
+    _(load_misaligned, 4)                               /* Load address misaligned */              \
+    _(store_misaligned, 6)                              /* Store/AMO address misaligned */         \
+    _(ecall_M, 11)                                      /* Environment call from M-mode */         \
+    IIF(RV32_HAS(SYSTEM))(                                                                         \
+        _(ecall_U, 8)                                   /* Environment call from U-mode */         \
+        _(ecall_S, 9)                                   /* Environment call from S-mode */         \
+        _(pagefault_insn, 12)                           /* Instruction page fault */               \
+        _(pagefault_load, 13)                           /* Load page fault */                      \
+        _(pagefault_store, 15)                          /* Store page fault */                     \
+	_(supervisor_sw_intr, (1U << 31) | 1)           /* Supervisor software interrupt */        \
+        _(supervisor_timer_intr, (1U << 31) | 5)        /* Supervisor timer interrupt */           \
+        _(supervisor_external_intr, (1U << 31) | 9)     /* Supervisor external interrupt */        \
     )
 /* clang-format on */
 
@@ -323,21 +323,7 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
                      * physical mem addr directly
                      */
     } else {
-
-	if(csr == CSR_SSTATUS){
-		//printf("PC: %x\n", rv->PC);
-		//printf("csrrw STATUS!!!!!!!!, val: %x\n",val);
-		//printf("csrrw STATUS!!!!!!!!, a0: %x\n",rv->X[10]);
-	}
-
         *c = val;
-    }
-
-    if (c == &rv->csr_sie && val == 1) {
-	    printf("csrrsie\n");
-	    printf("value: %d\n", val);
-	    exit(1);
-            //printf("after PC: 0x%x, csrrw spec value: 0x%x, 0x%x\n", rv->PC, *c, val);
     }
 
     return out;
@@ -1173,10 +1159,11 @@ void plic_update_interrupts(riscv_t *rv)
     plic->ip |= plic->active & ~plic->masked;
     plic->masked |= plic->active;
     /* Send interrupt to target */
-    if (plic->ip & plic->ie)
-        rv->csr_sip |= SIP_SEIP_SHIFT;
+    if (plic->ip & plic->ie){
+        rv->csr_sip |= SIP_SEIP;
+    }
     else
-        rv->csr_sip &= ~SIP_SEIP_SHIFT;
+        rv->csr_sip &= ~SIP_SEIP;
 }
 
 static uint32_t plic_read(riscv_t *rv, const uint32_t addr)
@@ -1185,11 +1172,12 @@ static uint32_t plic_read(riscv_t *rv, const uint32_t addr)
     plic_t *plic = attr->plic;
 
     /* no priority support: source priority hardwired to 1 */
-    if (addr >= 1 && addr <= 31)
+    if (1 <= addr && addr <= 31)
         return 0;
 
     uint32_t plic_read_val = 0;
 
+    printf("plic read addr: %x\n", addr);
     switch (addr) {
     case 0x400:
         plic_read_val = plic->ip;
@@ -1200,12 +1188,12 @@ static uint32_t plic_read(riscv_t *rv, const uint32_t addr)
     case 0x80000:
         /* no priority support: target priority threshold hardwired to 0 */
         plic_read_val = 0;
-
         break;
     case 0x80001:
         /* claim */
         {
             uint32_t intr_candidate = plic->ip & plic->ie;
+	    printf("claim! candidate: %d\n", intr_candidate);
             if (intr_candidate) {
                 plic_read_val = ilog2(intr_candidate);
                 plic->ip &= ~(1U << (plic_read_val));
@@ -1224,10 +1212,17 @@ static void plic_write(riscv_t *rv, const uint32_t addr, uint32_t value)
     vm_attr_t *attr = PRIV(rv);
     plic_t *plic = attr->plic;
 
+    if(addr == 0x80001){
+	    printf("plic write 0x80001\n");
+	    exit(1);
+    }
+
+
     /* no priority support: source priority hardwired to 1 */
-    if (addr >= 1 && addr <= 31)
+    if (1 <= addr && addr <= 31)
         return;
 
+    printf("plic write val: %x, addr: %x\n", value, addr);
     switch (addr) {
     case 0x800:
         plic->ie = (value & ~1);
@@ -1237,8 +1232,9 @@ static void plic_write(riscv_t *rv, const uint32_t addr, uint32_t value)
         break;
     case 0x80001:
         /* completion */
+	printf("complete plic\n");
         if (plic->ie & (1U << value))
-            plic->masked &= ~(1 << value);
+            plic->masked &= ~(1U << value);
         break;
     default:
         break;
@@ -1252,6 +1248,8 @@ static bool rv_has_plic_trap(riscv_t *rv)
     return ((rv->csr_sstatus & SSTATUS_SIE || !rv->priv_mode) && (rv->csr_sip & rv->csr_sie));
 }
 
+static void emu_update_uart_interrupts(riscv_t *rv);
+static uint32_t peripheral_update_ctr = 64;
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1262,6 +1260,13 @@ void rv_step(void *arg)
 
     /* find or translate a block for starting PC */
     const uint64_t cycles_target = rv->csr_cycle + cycles;
+    if (peripheral_update_ctr-- == 0) {
+         peripheral_update_ctr = 64;
+
+         u8250_check_ready(PRIV(rv)->uart);
+         if (PRIV(rv)->uart->in_ready)
+             emu_update_uart_interrupts(rv);
+    }
 
     /* loop until hitting the cycle target */
     while (rv->csr_cycle < cycles_target && !rv->halt) {
@@ -1269,17 +1274,13 @@ void rv_step(void *arg)
 	//if(can_trapped){
 	//	printf("PC: 0x%x\n", rv->PC);
 	//}
-	if((rv->csr_sip & rv->csr_sie)){
-		printf("SIE!\n");
-		exit(1);
-	}
+
+	//if(rv->csr_sip == 512 && rv->csr_sie == 546){
+	//printf("csr_sip: %d, csr_sie: %d\n", rv->csr_sip, rv->csr_sie);
+	//}
+
         if (rv_has_plic_trap(rv)) {
-		printf("has plic!!!\n");
-		exit(1);
-	    //if(rv->is_trapped)
-	    //    rv->is_nested_trapped = true;
-		//exit(1);
-            uint32_t intr_applicable = rv->csr_sip && rv->csr_sie;
+            uint32_t intr_applicable = rv->csr_sip & rv->csr_sie;
             uint8_t intr_idx = ilog2(intr_applicable);
             switch (intr_idx) {
             case 1:
@@ -1546,15 +1547,17 @@ uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
     return memory_ifetch(ppn | offset);
 }
 
-static void emu_update_uart_interrupts(riscv_t *vm)
+static void emu_update_uart_interrupts(riscv_t *rv)
 {
-    vm_attr_t *data = PRIV(vm);
-    u8250_update_interrupts(data->uart);
-    if (data->uart->pending_ints)
-        data->plic->active |= IRQ_UART_BIT;
+    vm_attr_t *attr = PRIV(rv);
+    u8250_update_interrupts(attr->uart);
+    if (attr->uart->pending_ints){
+    	//printf("emu update pending bits\n");
+        attr->plic->active |= IRQ_UART_BIT;
+    }
     else
-        data->plic->active &= ~IRQ_UART_BIT;
-    plic_update_interrupts(vm);
+        attr->plic->active &= ~IRQ_UART_BIT;
+    plic_update_interrupts(rv);
 }
 
 #define MMIO_PLIC 1
@@ -1567,11 +1570,10 @@ uint8_t ret_char;
 #define MMIO_OP(io, rw)                                           \
     IIF(io)( /* PLIC */                                           \
         IIF(rw)( /* read */                                       \
-		printf("plic read addr: %x\n", (addr & 0x3FFFFFF) >> 2);\
             read_val = plic_read(rv, (addr & 0x3FFFFFF) >> 2);           \
 	    plic_update_interrupts(rv); return read_val;          \
 	    ,     /* write */                                     \
-            plic_write(rv, (addr & 0x3FFFFFF) >> 2, (uint8_t *) &val);   \
+            plic_write(rv, (addr & 0x3FFFFFF) >> 2, val);   \
             plic_update_interrupts(rv); return;                   \
         )                                                         \
         ,    /* UART */                                           \
@@ -1625,15 +1627,7 @@ uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
-	    if(addr == 0){
-	    	printf("find root cause read word!\n");
-		//exit(1);
-	    }
     bool ok = MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
-    if(rv->PC == 0xc00022b8){
-    	//printf("mmu_read_w 22b8\n");
-	//exit(1);
-    }
     if (unlikely(!ok))
         return 0;
 
@@ -1643,14 +1637,9 @@ uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
         const vm_attr_t *attr = PRIV(rv);
-        if (addr < attr->mem->mem_size) {
-		if(rv->PC == 0xc0002470){
-			//printf("read_w, addr: 0x%x\n", addr);
-			//printf("val: 0x%x\n", memory_read_w(addr - 1));
-			//printf("val: 0x%x\n", memory_read_w(addr + 1));
-		}
+        if (addr < attr->mem->mem_size)
             return memory_read_w(addr);
-        }
+
         MMIO_READ();
     }
 }
@@ -1663,18 +1652,7 @@ uint16_t mmu_read_s(riscv_t *rv, const uint32_t addr)
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
-	    if(addr == 0){
-		//uint32_t insn;
-        	//insn = rv->io.mem_ifetch(rv, rv->PC);
-		//printf("insn: %x\n", insn);
-		//printf("a5 val: %x\n", rv->X[15]);
-	    	//printf("find root cause read short!\n");
-	    }
     bool ok = MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
-    if(rv->PC == 0xc00022b8){
-    	//printf("mmu_read_s 22b8\n");
-	//exit(1);
-    }
     if (unlikely(!ok))
         return 0;
 
@@ -1698,15 +1676,7 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
-	    if(addr == 0){
-	    	printf("find root cause read byte!\n");
-		exit(1);
-	    }
     bool ok = MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
-    if(rv->PC == 0xc00022b8){
-    	//printf("mmu_read_b 22b8\n");
-	//exit(1);
-    }
     if (unlikely(!ok))
         return 0;
 
@@ -1716,9 +1686,8 @@ uint8_t mmu_read_b(riscv_t *rv, const uint32_t addr)
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
         const vm_attr_t *attr = PRIV(rv);
-        if (addr < attr->mem->mem_size) {
+        if (addr < attr->mem->mem_size)
             return memory_read_b(addr);
-        }
 
         MMIO_READ();
     }
@@ -1734,37 +1703,15 @@ void mmu_write_w(riscv_t *rv, const uint32_t addr, const uint32_t val)
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
-	    if(addr == 0){
-	    	printf("find root cause!\n");
-		exit(1);
-	    }
     bool ok = MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W);
-    if(rv->PC == 0xc00022b8){
-    	//printf("mmu_write_w 22b8, ok: %d\n", ok);
-	//exit(1);
-    }
     if (unlikely(!ok))
         return;
-
-	if(prev_pc == 0xc03261bc){
-		//printf("MMU bc\n");
-	}
 
     pte = pte_ref; /* PTE should be valid now */
 
     {
         get_ppn_and_offset(ppn, offset);
         const uint32_t addr = ppn | offset;
-
-	//if(rv->PC == 0xc00022b8){
-	//	printf("PC is handle exception:\n");
-	//	if(pte){
-	//		printf("pte is valid\n");
-	//		printf("satp: 0x%x\n", rv->csr_satp);
-	//		printf("addr: 0x%x\n", addr);
-	//	}
-	//	//exit(1);
-	//}
         const vm_attr_t *attr = PRIV(rv);
         if (addr < attr->mem->mem_size) {
             memory_write_w(addr, (uint8_t *) &val);
@@ -1783,15 +1730,7 @@ void mmu_write_s(riscv_t *rv, const uint32_t addr, const uint16_t val)
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
-	    if(addr == 0){
-	    	printf("find root cause!\n");
-		exit(1);
-	    }
     bool ok = MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W);
-    if(rv->PC == 0xc00022b8){
-    	//printf("mmu_write_s 22b8\n");
-	//exit(1);
-    }
     if (unlikely(!ok))
         return;
 
@@ -1816,10 +1755,6 @@ void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
     uint32_t level;
     uint32_t *pte_ref;
     uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
-	    if(addr == 0){
-	    	printf("find root cause!\n");
-		exit(1);
-	    }
     bool ok = MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W);
     if(rv->PC == 0xc00022b8){
     	//printf("mmu_write_b 22b8\n");
@@ -1831,15 +1766,15 @@ void mmu_write_b(riscv_t *rv, const uint32_t addr, const uint8_t val)
     pte = pte_ref; /* PTE should be valid now */
 
     {
-    get_ppn_and_offset(ppn, offset);
-    const uint32_t oaddr = addr;
-    const uint32_t addr = ppn | offset;
-    const vm_attr_t *attr = PRIV(rv);
-    if (addr < attr->mem->mem_size) {
-        memory_write_b(addr, (uint8_t *) &val);
-        return;
-    }
-    MMIO_WRITE();
+         get_ppn_and_offset(ppn, offset);
+         const uint32_t addr = ppn | offset;
+         const vm_attr_t *attr = PRIV(rv);
+         if (addr < attr->mem->mem_size) {
+             memory_write_b(addr, (uint8_t *) &val);
+             return;
+         }
+
+         MMIO_WRITE();
     }
 }
 

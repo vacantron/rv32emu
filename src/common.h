@@ -35,7 +35,7 @@
  *
  */
 #if defined(__GNUC__) || defined(__clang__)
-#define ilog2(x) (__builtin_clz(x | 1))
+#define ilog2(x) 31 - __builtin_clz(x | 1)
 #elif defined(_MSC_VER)
 /* FIXME */
 #else /* unsupported compilers */

@@ -351,6 +351,8 @@ riscv_t *rv_create(riscv_user_t rv_attr)
 	/* setup PLIC */
         attr->uart = u8250_new();
         assert(attr->uart);
+	attr->uart->in_fd = 0;
+	attr->uart->out_fd = 1;
 
         /* reset privilege mode */
         rv->priv_mode = RV_PRIV_S_MODE;

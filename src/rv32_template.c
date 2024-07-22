@@ -1109,7 +1109,6 @@ RVOP(
     	//printf("sret sum sstatus: 0x%x \n", (rv->csr_sstatus & SSTATUS_SUM) >> SSTATUS_SUM_SHIFT);
     	//printf("sret after sstatus: 0x%x\n", rv->csr_sstatus);
 	//exit(1);
-	//printf("restore sepc: %x\n", rv->csr_sepc);
         rv->PC = rv->csr_sepc;
 	//printf("--------------------\n");
 	//printf("sret spp: %d\n", rv->priv_mode);
