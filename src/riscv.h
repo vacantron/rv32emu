@@ -158,6 +158,9 @@ enum {
 #define PTE_A (1U << 6)
 #define PTE_D (1U << 7)
 
+#define RV_INT_STI_SHIFT 5
+#define RV_INT_STI (1 << RV_INT_STI_SHIFT)
+
 /*
  * SBI functions must return a pair of values:
  *

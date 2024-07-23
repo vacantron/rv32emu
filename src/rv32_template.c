@@ -119,6 +119,7 @@
  */
 
 /* Internal */
+#include <wchar.h>
 #include "decode.h"
 RVOP(
     nop,
@@ -542,8 +543,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        rv->X[ir->rd] =
-            sign_extend_b(rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm));
+        rv->X[ir->rd] = sign_extend_b(tmp);
     },
     GEN({
         mem;
@@ -565,7 +565,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        rv->X[ir->rd] = sign_extend_h(rv->io.mem_read_s(rv, addr));
+        rv->X[ir->rd] = sign_extend_h(tmp);
     },
     GEN({
         mem;
@@ -580,6 +580,7 @@ RVOP(
 RVOP(
     lw,
     {
+
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
         //if(rv->PC == 0xc0002470){
 	//	printf("lw here\n");
@@ -592,7 +593,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        rv->X[ir->rd] = rv->io.mem_read_w(rv, addr);
+        rv->X[ir->rd] = tmp;
         //if(rv->PC == 0xc0002470){
 	//	printf("a2: 0x%x\n", rv->X[ir->rd]);
 	//}
@@ -615,7 +616,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-    rv->X[ir->rd] = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm);
+    rv->X[ir->rd] = tmp;
     },
     GEN({
         mem;
@@ -643,7 +644,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        rv->X[ir->rd] = rv->io.mem_read_s(rv, addr);
+        rv->X[ir->rd] = tmp;
     },
     GEN({
         mem;
@@ -1111,6 +1112,7 @@ RVOP(
 	//exit(1);
         rv->PC = rv->csr_sepc;
 	//printf("--------------------\n");
+	//printf("sret\n");
 	//printf("sret spp: %d\n", rv->priv_mode);
 	//printf("sret sepc: 0x%x\n", rv->PC);
 	//printf("sret sum: %d\n", (rv->csr_sstatus & SSTATUS_SUM) >> SSTATUS_SUM_SHIFT);
@@ -1197,6 +1199,10 @@ RVOP(
     {
         PC += 4;
 	if((PC >> 20) == 0x957){
+	}
+	if(rv->PC == 0xc01c1a6c){
+	//printf("fence here, reg 19: %d\n", rv->X[19]);
+	//printf("reg 20(s4): %x\n", rv->X[20]);
 	}
         /* FIXME: fill real implementations */
         rv->csr_cycle = cycle;
@@ -1527,7 +1533,7 @@ RVOP(
 		return true;
 	}
         if (ir->rd)
-            rv->X[ir->rd] = rv->io.mem_read_w(rv, addr);
+            rv->X[ir->rd] = tmp;
         /* skip registration of the 'reservation set'
          * FIXME: unimplemented
          */
@@ -1568,7 +1574,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1589,7 +1595,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1611,7 +1617,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1633,7 +1639,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1655,7 +1661,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1677,7 +1683,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1701,7 +1707,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1725,7 +1731,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1747,7 +1753,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
+        const uint32_t value1 = tmp;
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1774,7 +1780,7 @@ RVOP(
 		rv->is_trapped = false;
 		return true;
 	}
-        rv->F[ir->rd].v = rv->io.mem_read_w(rv, addr);
+        rv->F[ir->rd].v = tmp;
     },
     GEN({
         assert; /* FIXME: Implement */

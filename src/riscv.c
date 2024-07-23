@@ -248,6 +248,28 @@ static void map_file(char **ram_loc, const char *name)
     close(fd);
 }
 
+#include <termios.h>
+
+static void reset_keyboard_input()
+{
+    /* Re-enable echo, etc. on keyboard. */
+    struct termios term;
+    tcgetattr(0, &term);
+    term.c_lflag |= ICANON | ECHO;
+    tcsetattr(0, TCSANOW, &term);
+}
+ /* Asynchronous communication to capture all keyboard input for the VM. */
+static void capture_keyboard_input()
+{
+    /* Hook exit, because we want to re-enable keyboard. */
+    atexit(reset_keyboard_input);
+
+    struct termios term;
+    tcgetattr(0, &term);
+    term.c_lflag &= ~(ICANON | ECHO | ISIG); /* Disable echo as well */
+    tcsetattr(0, TCSANOW, &term);
+}
+
 riscv_t *rv_create(riscv_user_t rv_attr)
 {
     assert(rv_attr);
@@ -269,6 +291,8 @@ riscv_t *rv_create(riscv_user_t rv_attr)
 
     /* reset */
     rv_reset(rv, 0U);
+
+    //capture_keyboard_input();
 
     if (attr->data.user) {
         elf_t *elf = elf_new();

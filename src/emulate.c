@@ -3,8 +3,6 @@
  * "LICENSE" for information on usage and redistribution of this file.
  */
 
-int emu_cnt = 1;
-
 #include <assert.h>
 #include <setjmp.h>
 #include <stdbool.h>
@@ -81,9 +79,6 @@ static void rv_trap_default_handler(riscv_t *rv)
 {
     rv->csr_mepc += rv->compressed ? 2 : 4;
     rv->PC = rv->csr_mepc; /* mret */
-	if(((rv->PC >> 20) == 0x957)){
-		//exit(1);
-	}
 }
 
 #if RV32_HAS(SYSTEM)
@@ -534,14 +529,14 @@ static set_t pc_set;
 static bool has_loops = false;
 #endif
 
+static void emu_update_uart_interrupts(riscv_t *rv);
+static uint32_t peripheral_update_ctr = 64;
+
 /* Interpreter-based execution path */
 #define RVOP(inst, code, asm)                                                 \
     static bool do_##inst(riscv_t *rv, rv_insn_t *ir, uint64_t cycle,         \
                           uint32_t PC)                                        \
     {                                                                         \
-	emu_cnt--;\
-        /*printf("PC: 0x%x, ir_pc: 0x%x, rs1: 0x%x, rs2: 0x%x, rd: 0x%x, imm: \
-         * 0x%x\n", rv->PC, ir->pc, ir->rs1, ir->rs2, ir->rd, ir->imm);*/     \
         cycle++;                                                              \
         code;                                                                 \
     nextop:                                                                   \
@@ -804,6 +799,49 @@ static void block_translate(riscv_t *rv, block_t *block)
 		//exit(1);
 	}
 
+	if(rv->PC == 0xc01c1dac) {
+		//printf("plic_irq_eoi\n");
+	}
+
+	if(rv->PC == 0xc0038628) {
+		//printf("generic_handle_domain_irq\n");
+	}
+
+	if(rv->PC == 0xc0038638) {
+		//printf("irq_resolve_mapping\n");
+	}
+
+	if(rv->PC == 0xc0038584) {
+		//printf("handle_irq_desc\n");
+	}
+
+	if(rv->PC == 0xc0038598) {
+		//printf("generic_handle_irq_desc\n");
+	}
+
+	if(rv->PC == 0xc01c19d8) {
+		//printf("handle irq\n");
+	}
+
+	if(rv->PC == 0xc01c1cb8) {
+		//printf("toggle irq\n");
+	}
+
+	if(rv->PC == 0xc01c1a74) {
+		//printf("chained_irq_exit\n");
+	}
+
+	if(rv->PC == 0xc01c1a78) {
+		//printf("chained_irq_exit 1\n");
+	}
+
+	if(rv->PC == 0xc01c1a7c) {
+		//printf("chained_irq_exit 2\n");
+	}
+
+	if(rv->PC == 0xc033f82c) {
+		//printf("plic init\n");
+	}
 
 	if(rv->is_trapped && insn == 0){
 		rv->is_trapped = false;
@@ -814,6 +852,7 @@ static void block_translate(riscv_t *rv, block_t *block)
 		insn = rv->io.mem_ifetch(rv, block->pc_end);
 		//printf("retry!, new insn: %x\n", insn);
 	}
+
 
         /* decode the instruction */
         if (!rv_decode(ir, insn)) {
@@ -1036,7 +1075,6 @@ static void optimize_constant(riscv_t *rv UNUSED, block_t *block)
 static block_t *prev = NULL;
 static block_t *block_find_or_translate(riscv_t *rv)
 {
-emu_cnt++;
 #if !RV32_HAS(JIT)
     block_map_t *map = &rv->block_map;
     /* lookup the next block in the block map */
@@ -1177,7 +1215,7 @@ static uint32_t plic_read(riscv_t *rv, const uint32_t addr)
 
     uint32_t plic_read_val = 0;
 
-    printf("plic read addr: %x\n", addr);
+    //printf("plic read addr: %x\n", addr);
     switch (addr) {
     case 0x400:
         plic_read_val = plic->ip;
@@ -1193,7 +1231,6 @@ static uint32_t plic_read(riscv_t *rv, const uint32_t addr)
         /* claim */
         {
             uint32_t intr_candidate = plic->ip & plic->ie;
-	    printf("claim! candidate: %d\n", intr_candidate);
             if (intr_candidate) {
                 plic_read_val = ilog2(intr_candidate);
                 plic->ip &= ~(1U << (plic_read_val));
@@ -1212,17 +1249,10 @@ static void plic_write(riscv_t *rv, const uint32_t addr, uint32_t value)
     vm_attr_t *attr = PRIV(rv);
     plic_t *plic = attr->plic;
 
-    if(addr == 0x80001){
-	    printf("plic write 0x80001\n");
-	    exit(1);
-    }
-
-
     /* no priority support: source priority hardwired to 1 */
     if (1 <= addr && addr <= 31)
         return;
 
-    printf("plic write val: %x, addr: %x\n", value, addr);
     switch (addr) {
     case 0x800:
         plic->ie = (value & ~1);
@@ -1232,7 +1262,8 @@ static void plic_write(riscv_t *rv, const uint32_t addr, uint32_t value)
         break;
     case 0x80001:
         /* completion */
-	printf("complete plic\n");
+	//printf("complete plic\n");
+	//exit(1);
         if (plic->ie & (1U << value))
             plic->masked &= ~(1U << value);
         break;
@@ -1248,8 +1279,6 @@ static bool rv_has_plic_trap(riscv_t *rv)
     return ((rv->csr_sstatus & SSTATUS_SIE || !rv->priv_mode) && (rv->csr_sip & rv->csr_sie));
 }
 
-static void emu_update_uart_interrupts(riscv_t *rv);
-static uint32_t peripheral_update_ctr = 64;
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1260,6 +1289,16 @@ void rv_step(void *arg)
 
     /* find or translate a block for starting PC */
     const uint64_t cycles_target = rv->csr_cycle + cycles;
+
+
+    /* loop until hitting the cycle target */
+    while (rv->csr_cycle < cycles_target && !rv->halt) {
+        /* check for any interrupt after every block emulation */
+
+	//if(rv->csr_sip == 512 && rv->csr_sie == 546){
+	//printf("csr_sip: %d, csr_sie: %d\n", rv->csr_sip, rv->csr_sie);
+	//}
+
     if (peripheral_update_ctr-- == 0) {
          peripheral_update_ctr = 64;
 
@@ -1267,17 +1306,6 @@ void rv_step(void *arg)
          if (PRIV(rv)->uart->in_ready)
              emu_update_uart_interrupts(rv);
     }
-
-    /* loop until hitting the cycle target */
-    while (rv->csr_cycle < cycles_target && !rv->halt) {
-        /* check for any interrupt after every block emulation */
-	//if(can_trapped){
-	//	printf("PC: 0x%x\n", rv->PC);
-	//}
-
-	//if(rv->csr_sip == 512 && rv->csr_sie == 546){
-	//printf("csr_sip: %d, csr_sie: %d\n", rv->csr_sip, rv->csr_sie);
-	//}
 
         if (rv_has_plic_trap(rv)) {
             uint32_t intr_applicable = rv->csr_sip & rv->csr_sie;
@@ -1343,11 +1371,6 @@ void rv_step(void *arg)
             prev = NULL;
             break;
         }
-	//if(emu_cnt != 1){
-	//	printf("emu cnt: %d\n", emu_cnt);
-	//	printf("emu not step by step!\n");
-	//	exit(1);
-	//}
         prev = block;
     }
 }
