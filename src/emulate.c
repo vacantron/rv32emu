@@ -213,6 +213,11 @@ static inline void update_time(riscv_t *rv)
     rv->csr_time[1] = t >> 32;
 }
 
+static inline void get_time_now(struct timeval *tv)
+{
+    rv_gettimeofday(tv);
+}
+
 #if RV32_HAS(Zicsr)
 /* get a pointer to a CSR */
 static uint32_t *csr_get_ptr(riscv_t *rv, uint32_t csr)
@@ -300,6 +305,10 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
     uint32_t *c = csr_get_ptr(rv, csr);
     if (!c)
         return 0;
+
+    //if(csr == 0x14D || csr == 0x15D){
+    //	printf("time cmp\n");
+    //}
 
     uint32_t out = *c;
 #if RV32_HAS(EXT_F)
@@ -1290,14 +1299,12 @@ void rv_step(void *arg)
     /* find or translate a block for starting PC */
     const uint64_t cycles_target = rv->csr_cycle + cycles;
 
+    /* now time */
+    struct timeval tv;
 
     /* loop until hitting the cycle target */
     while (rv->csr_cycle < cycles_target && !rv->halt) {
         /* check for any interrupt after every block emulation */
-
-	//if(rv->csr_sip == 512 && rv->csr_sie == 546){
-	//printf("csr_sip: %d, csr_sie: %d\n", rv->csr_sip, rv->csr_sie);
-	//}
 
     if (peripheral_update_ctr-- == 0) {
          peripheral_update_ctr = 64;
@@ -1306,6 +1313,15 @@ void rv_step(void *arg)
          if (PRIV(rv)->uart->in_ready)
              emu_update_uart_interrupts(rv);
     }
+
+    	get_time_now(&tv);
+        uint64_t t = (uint64_t) (tv.tv_sec * 1e6) + (uint32_t) tv.tv_usec;
+
+	if(t > attr->timer){
+		rv->csr_sip |= RV_INT_STI;
+	} else {
+		rv->csr_sip &= ~RV_INT_STI;
+	}
 
         if (rv_has_plic_trap(rv)) {
             uint32_t intr_applicable = rv->csr_sip & rv->csr_sie;
