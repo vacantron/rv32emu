@@ -26,8 +26,6 @@ struct LLVM_block_map {
     struct LLVM_block_map_entry map[MAX_BLOCKS];
 };
 
-struct LLVM_block_map *__map;
-
 FORCE_INLINE void t2c_block_map_insert(struct LLVM_block_map *map,
                                        LLVMBasicBlockRef *entry,
                                        uint32_t pc)
@@ -145,6 +143,10 @@ LLVMTypeRef t2c_fn_debug_proto;
 LLVMValueRef t2c_fn_debug;
 bool t2c_trigger;
 
+/* TODO: hash table */
+int idx;
+struct LLVM_block_map __t2c_map[512];
+
 #include "t2c_template.c"
 #undef T2C_OP
 
@@ -178,20 +180,22 @@ FORCE_INLINE bool t2c_insn_is_terminal(uint8_t opcode)
     return false;
 }
 
-long t2c_test_fn(long rv, long map)
+long t2c_test_fn(long rv, long idx)
 {
-    for (uint32_t i = 1; i < ((struct LLVM_block_map *) map)->count; i++) {
-        if (((struct LLVM_block_map *) map)->map[i].pc ==
-            ((riscv_t *) rv)->block_ref) {
+    struct LLVM_block_map *_map = (struct LLVM_block_map *) &__t2c_map[idx];
+    riscv_t *_rv = (riscv_t *) rv;
+
+    for (uint32_t i = 0; i < _map->count; i++) {
+        if (_map->map[i].pc == _rv->block_ref) {
             return (long) i;
         }
     }
-    return (long) NULL;
+    return ~0L;
 }
 
 void t2c_debug()
 {
-    printf("found\n");
+    // printf("found\n");
 }
 
 typedef void (*t2c_codegen_block_func_t)(LLVMBuilderRef *builder UNUSED,
@@ -307,7 +311,6 @@ void t2c_compile(block_t *block, uint64_t mem_base, riscv_t *rv)
     set_reset(&set);
     struct LLVM_block_map map;
     map.count = 0;
-    __map = &map;
     /* Translate custon IR into LLVM IR */
     t2c_trace_ebb(&builder, param_types, start, &entry, mem_base,
                   block->ir_head, &set, &map, rv);

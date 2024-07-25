@@ -997,7 +997,7 @@ void rv_step(void *arg)
             prev = NULL;
             continue;
         } /* check if invoking times of t1 generated code exceed threshold */
-        else if (!block->compiled && block->n_invoke >= (THRESHOLD >> 6)) {
+        else if (!block->compiled && block->n_invoke >= (THRESHOLD >> 8)) {
             block->compiled = true;
             queue_entry_t *entry = malloc(sizeof(queue_entry_t));
             entry->block = block;
