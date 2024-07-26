@@ -37,6 +37,7 @@
 #include "cache.h"
 #include "decode.h"
 #include "io.h"
+#include "jit-cache.h"
 #include "jit.h"
 #include "riscv.h"
 #include "riscv_private.h"
@@ -1864,6 +1865,7 @@ static void code_cache_flush(struct jit_state *state, riscv_t *rv)
     state->offset = state->org_size;
     state->n_blocks = 0;
     set_reset(&state->set);
+    jit_cache_clear(rv->jit_cache, JIT_CACHE_TABLE_SIZE);
     clear_cache_hot(rv->block_cache, (clear_func_t) clear_hot);
     return;
 }

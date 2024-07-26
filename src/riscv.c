@@ -32,6 +32,7 @@
 #include <pthread.h>
 #endif
 #include "cache.h"
+#include "jit-cache.h"
 #include "jit.h"
 #define CODE_CACHE_SIZE (4 * 1024 * 1024)
 #endif
@@ -291,6 +292,7 @@ riscv_t *rv_create(riscv_user_t rv_attr)
         mpool_create(sizeof(chain_entry_t) << BLOCK_IR_MAP_CAPACITY_BITS,
                      sizeof(chain_entry_t));
     rv->jit_state = jit_state_init(CODE_CACHE_SIZE);
+    rv->jit_cache = jit_cache_init(JIT_CACHE_TABLE_SIZE);
     rv->block_cache = cache_create(BLOCK_MAP_CAPACITY_BITS);
     assert(rv->block_cache);
 #if RV32_HAS(T2C)
@@ -392,6 +394,7 @@ void rv_delete(riscv_t *rv)
 #endif
     mpool_destroy(rv->chain_entry_mp);
     jit_state_exit(rv->jit_state);
+    jit_cache_exit(rv->jit_cache);
     cache_free(rv->block_cache);
 #endif
     free(rv);

@@ -11,10 +11,13 @@
 #include <llvm-c/Transforms/PassBuilder.h>
 #include <stdlib.h>
 
+#include "jit-cache.h"
 #include "jit.h"
 #include "riscv_private.h"
 
 #define MAX_BLOCKS 8152
+
+struct jit_cache *__t2c_jit_cache;
 
 struct LLVM_block_map_entry {
     uint32_t pc;
@@ -141,11 +144,12 @@ LLVMTypeRef t2c_fn_proto;
 LLVMValueRef t2c_fn;
 LLVMTypeRef t2c_fn_debug_proto;
 LLVMValueRef t2c_fn_debug;
-bool t2c_trigger;
+LLVMTypeRef jit_cache_ty;
 
-/* TODO: hash table */
-int idx;
-struct LLVM_block_map __t2c_map[512];
+/* global counter */
+bool t2c_trigger;
+/* local counter */
+bool __t2c_trigger;
 
 #include "t2c_template.c"
 #undef T2C_OP
@@ -180,22 +184,9 @@ FORCE_INLINE bool t2c_insn_is_terminal(uint8_t opcode)
     return false;
 }
 
-long t2c_test_fn(long rv, long idx)
-{
-    struct LLVM_block_map *_map = (struct LLVM_block_map *) &__t2c_map[idx];
-    riscv_t *_rv = (riscv_t *) rv;
-
-    for (uint32_t i = 0; i < _map->count; i++) {
-        if (_map->map[i].pc == _rv->block_ref) {
-            return (long) i;
-        }
-    }
-    return ~0L;
-}
-
 void t2c_debug()
 {
-    // printf("found\n");
+    printf("found\n");
 }
 
 typedef void (*t2c_codegen_block_func_t)(LLVMBuilderRef *builder UNUSED,
@@ -272,18 +263,22 @@ static void t2c_trace_ebb(LLVMBuilderRef *builder,
 
 void t2c_compile(block_t *block, uint64_t mem_base, riscv_t *rv)
 {
-    t2c_trigger = false;
+    __t2c_trigger = false;
+    __t2c_jit_cache = rv->jit_cache;
 
     LLVMModuleRef module = LLVMModuleCreateWithName("my_module");
 
-    LLVMTypeRef ty[2];
-    ty[0] = LLVMInt64Type();
-    ty[1] = LLVMInt64Type();
-    t2c_fn_proto = LLVMFunctionType(LLVMInt64Type(), ty, 2, 0);
-    t2c_fn = LLVMAddFunction(module, "t2c_test_fn", t2c_fn_proto);
-
     t2c_fn_debug_proto = LLVMFunctionType(LLVMVoidType(), NULL, 0, 0);
     t2c_fn_debug = LLVMAddFunction(module, "t2c_debug", t2c_fn_debug_proto);
+
+    /* hacking: handle member alignment */
+    LLVMTypeRef jit_cache_memb[3] = {LLVMInt32Type(), LLVMInt32Type(),
+                                     LLVMPointerType(LLVMVoidType(), 0)};
+    jit_cache_ty = LLVMStructType(jit_cache_memb, 3, false);
+
+    LLVMTypeRef t2c_fn_args[2] = {LLVMInt64Type(), LLVMInt64Type()};
+    t2c_fn_proto = LLVMFunctionType(LLVMVoidType(), t2c_fn_args, 2, false);
+    t2c_fn = LLVMAddFunction(module, "t2c_fn", t2c_fn_proto);
 
     LLVMTypeRef io_members[] = {
         LLVMPointerType(LLVMVoidType(), 0), LLVMPointerType(LLVMVoidType(), 0),
@@ -347,11 +342,14 @@ void t2c_compile(block_t *block, uint64_t mem_base, riscv_t *rv)
         abort();
     }
 
-    if (t2c_trigger) {
-        LLVMAddGlobalMapping(engine, t2c_fn, t2c_test_fn);
-        LLVMAddGlobalMapping(engine, t2c_fn_debug, t2c_debug);
+    if (__t2c_trigger) {
+        // LLVMAddGlobalMapping(engine, t2c_fn_debug, t2c_debug);
+        LLVMAddGlobalMapping(engine, t2c_fn,
+                             ((struct jit_state *) rv->jit_state)->buf);
         // LLVMPrintModuleToFile(module, "IR.ll", &error);
     }
+
+    t2c_trigger |= __t2c_trigger;
 
     /* Return the function pointer of T2C generated machine code */
     block->func = (exec_t2c_func_t) LLVMGetPointerToGlobal(engine, start);

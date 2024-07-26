@@ -31,6 +31,7 @@ extern struct target_ops gdbstub_ops;
 
 #if RV32_HAS(JIT)
 #include "cache.h"
+#include "jit-cache.h"
 #include "jit.h"
 #endif
 
@@ -1017,6 +1018,8 @@ void rv_step(void *arg)
         } /* check if the execution path is potential hotspot */
         if (block->translatable && runtime_profiler(rv, block)) {
             jit_translate(rv, block);
+            jit_cache_insert(rv->jit_cache, JIT_CACHE_TABLE_SIZE, rv->PC,
+                             state->buf + block->offset);
             ((exec_block_func_t) state->buf)(
                 rv, (uintptr_t) (state->buf + block->offset));
             prev = NULL;

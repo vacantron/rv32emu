@@ -43,68 +43,67 @@ static void t2c_jalr(LLVMBuilderRef *builder __attribute__((unused)),
                      struct LLVM_block_map *map __attribute__((unused)),
                      riscv_t *rv __attribute__((unused)))
 {
+    __t2c_trigger = 1;
+
     if (ir->rd)
         LLVMBuildStore(*builder, LLVMConstInt(LLVMInt32Type(), ir->pc + 4, 1),
                        t2c_gen_rd_addr(start, builder, ir));
 
     LLVMValueRef val_rs1 = LLVMBuildLoad2(
         *builder, LLVMInt32Type(), t2c_gen_rs1_addr(start, builder, ir), "");
+
     val_rs1 = LLVMBuildAdd(*builder, val_rs1,
                            LLVMConstInt(LLVMInt32Type(), ir->imm, 1), "");
     val_rs1 = LLVMBuildAnd(*builder, val_rs1,
                            LLVMConstInt(LLVMInt32Type(), ~1U, 1), "");
-    if (map->count > 1) {
-        t2c_trigger = 1;
-        memcpy(&__t2c_map[idx], map, sizeof(struct LLVM_block_map));
 
-        LLVMBuildStore(*builder, val_rs1,
-                       t2c_gen_block_ref_addr(start, builder, ir));
+    LLVMBasicBlockRef trueBlock = LLVMAppendBasicBlock(start, "true_entry");
+    LLVMBuilderRef builder2 = LLVMCreateBuilder();
+    LLVMPositionBuilderAtEnd(builder2, trueBlock);
+    LLVMBasicBlockRef falseBlock = LLVMAppendBasicBlock(start, "false_entry");
+    LLVMBuilderRef builder3 = LLVMCreateBuilder();
+    LLVMPositionBuilderAtEnd(builder3, falseBlock);
 
-        LLVMBasicBlockRef trueBlock = LLVMAppendBasicBlock(start, "true_entry");
-        LLVMBuilderRef builder2 = LLVMCreateBuilder();
-        LLVMPositionBuilderAtEnd(builder2, trueBlock);
-        LLVMBasicBlockRef falseBlock =
-            LLVMAppendBasicBlock(start, "false_entry");
-        LLVMBuilderRef builder3 = LLVMCreateBuilder();
-        LLVMPositionBuilderAtEnd(builder3, falseBlock);
+    /* get jit-cache base address */
+    LLVMValueRef base = LLVMConstIntToPtr(
+        LLVMConstInt(LLVMInt64Type(), (long) __t2c_jit_cache, false),
+        LLVMPointerType(jit_cache_ty, 0));
 
-        LLVMValueRef args[2];
-        args[0] = LLVMConstInt(LLVMInt64Type(), (long) rv, 0);
-        args[1] = LLVMConstInt(LLVMInt64Type(), (long) idx, 0);
-        idx++;
+    /* get index */
+    LLVMValueRef hash = LLVMBuildAnd(
+        *builder, val_rs1,
+        LLVMConstInt(LLVMInt32Type(), JIT_CACHE_TABLE_SIZE - 1, false), "");
 
-        LLVMValueRef ret =
-            LLVMBuildCall2(*builder, t2c_fn_proto, t2c_fn, args, 2, "");
-        LLVMValueRef cmp =
-            LLVMBuildICmp(*builder, LLVMIntNE, ret,
-                          LLVMConstInt(LLVMInt64Type(), ~0L, 1), "");
-        LLVMBuildCondBr(*builder, cmp, trueBlock, falseBlock);
+    /* get jit_cache::pc */
+    LLVMValueRef cast =
+        LLVMBuildIntCast2(*builder, hash, LLVMInt64Type(), false, "");
+    LLVMValueRef element_ptr =
+        LLVMBuildInBoundsGEP2(*builder, jit_cache_ty, base, &cast, 1, "");
+    LLVMValueRef pc_ptr =
+        LLVMBuildStructGEP2(*builder, jit_cache_ty, element_ptr, 0, "");
+    LLVMValueRef pc = LLVMBuildLoad2(*builder, LLVMInt32Type(), pc_ptr, "");
 
-        LLVMBuildCall2(builder2, t2c_fn_debug_proto, t2c_fn_debug, NULL, 0, "");
+    /* compare with calculated destination */
+    LLVMValueRef cmp = LLVMBuildICmp(*builder, LLVMIntEQ, pc, val_rs1, "");
 
-        LLVMValueRef label[512]; /* set stack size to 512 */
-        for (size_t i = 0; i < map->count; i++) {
-            label[i] = LLVMBlockAddress(start, map->map[i].block);
-        }
-        LLVMValueRef arr =
-            LLVMConstArray2(LLVMPointerTypeInContext(LLVMGetGlobalContext(), 0),
-                            label, map->count);
+    LLVMBuildCondBr(*builder, cmp, trueBlock, falseBlock);
 
-        LLVMValueRef ptr = LLVMBuildInBoundsGEP2(
-            builder2, LLVMPointerTypeInContext(LLVMGetGlobalContext(), 0), arr,
-            &ret, 1, "");
-        LLVMValueRef ref = LLVMBuildIndirectBr(builder2, ptr, map->count);
-        for (size_t i = 0; i < map->count; i++) {
-            LLVMAddDestination(ref, map->map[i].block);
-        }
+    // LLVMBuildCall2(builder2, t2c_fn_debug_proto, t2c_fn_debug, NULL, 0, "");
 
-        LLVMBuildStore(builder3, val_rs1,
-                       t2c_gen_PC_addr(start, &builder3, ir));
-        LLVMBuildRetVoid(builder3);
-    } else {
-        LLVMBuildStore(*builder, val_rs1, t2c_gen_PC_addr(start, builder, ir));
-        LLVMBuildRetVoid(*builder);
-    }
+    /* get jit_cache::entry */
+    LLVMValueRef entry_ptr =
+        LLVMBuildStructGEP2(builder2, jit_cache_ty, element_ptr, 2, "");
+
+    /* invoke T1C JIT-ed instructions */
+    LLVMValueRef args[2] = {
+        LLVMConstInt(LLVMInt64Type(), (long) rv, false),
+        LLVMBuildLoad2(builder2, LLVMInt64Type(), entry_ptr, "")};
+
+    LLVMBuildCall2(builder2, t2c_fn_proto, t2c_fn, args, 2, "");
+    LLVMBuildRetVoid(builder2);
+
+    LLVMBuildStore(builder3, val_rs1, t2c_gen_PC_addr(start, &builder3, ir));
+    LLVMBuildRetVoid(builder3);
 }
 
 #define BRANCH_FUNC(type, cond)                                             \
