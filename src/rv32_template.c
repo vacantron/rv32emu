@@ -166,11 +166,6 @@ RVOP(
         /* Jump */
         PC += ir->imm;
 
-	if((PC >> 20) == 0x957){
-		//printf("jalr == 0x957, prev pc: 0x%x\n", pc);
-		//exit(1);
-	}
-
         /* link with return address */
         if (ir->rd)
             rv->X[ir->rd] = pc + 4;
@@ -188,7 +183,9 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    if(!rv->is_trapped){
+		    MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    }
         }
         goto end_op;
     },
@@ -213,6 +210,7 @@ RVOP(
 #if !RV32_HAS(JIT)
 #define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                               \
     /* lookup branch history table */                                         \
+    if(!rv->is_trapped){ \
         for (int i = 0; i < HISTORY_SIZE; i++) {                              \
             if (ir->branch_table->PC[i] == PC) {                              \
                 MUST_TAIL return ir->branch_table->target[i]->impl(           \
@@ -228,7 +226,9 @@ RVOP(
                 (ir->branch_table->idx + 1) % HISTORY_SIZE;                   \
             MUST_TAIL return block->ir_head->impl(rv, block->ir_head, cycle,  \
                                                   PC);                        \
-        }
+        } else {\
+	}\
+    }
 #else
 #define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                               \
     block_t *block = cache_get(rv->block_cache, PC, true);                    \
@@ -275,16 +275,9 @@ RVOP(
 
         const uint32_t pc = PC;
 
-	const uint32_t prev_pc = PC;
-
 
         /* jump */
         PC = (rv->X[ir->rs1] + ir->imm) & ~1U;
-
-	if((PC >> 20) == 0x957){
-		//printf("jalr == 0x957, prev pc: 0x%x\n", prev_pc);
-		//exit(1);
-	}
 
         /* link */
         if (ir->rd)
@@ -334,15 +327,14 @@ RVOP(
                 goto nextop;                                       \
         }, );                                                      \
         PC += 4;                                                   \
-	if((PC >> 20) == 0x957){\
-	}\
         last_pc = PC;                                              \
-        MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);    \
-    }                                                              \
+	if(!rv->is_trapped) {\
+		MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);    \
+	}\
+	goto end_op;\
+    }                                                          \
     is_branch_taken = true;                                        \
     PC += ir->imm;                                                 \
-    if((PC >> 20) == 0x957){\
-    }\
     /* check instruction misaligned */                             \
     IIF(RV32_HAS(EXT_C))                                           \
     (, RV_EXC_MISALIGN_HANDLER(pc, insn, false, 0););              \
@@ -356,8 +348,12 @@ RVOP(
             if (cache_hot(rv->block_cache, PC))                    \
                 goto end_op;                                       \
         }, );                                                      \
+	if(rv->PC == 0xc0002388){\
+	}\
         last_pc = PC;                                              \
-        MUST_TAIL return taken->impl(rv, taken, cycle, PC);        \
+	if(!rv->is_trapped) {\
+        	MUST_TAIL return taken->impl(rv, taken, cycle, PC);        \
+	}\
     }                                                              \
     goto end_op;
 
@@ -538,12 +534,8 @@ RVOP(
 RVOP(
     lb,
     {
-	uint8_t tmp = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        rv->X[ir->rd] = sign_extend_b(tmp);
+        uint32_t addr = rv->X[ir->rs1] + ir->imm;
+        rv->X[ir->rd] = sign_extend_b(rv->io.mem_read_b(rv, addr));
     },
     GEN({
         mem;
@@ -560,12 +552,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
         RV_EXC_MISALIGN_HANDLER(1, load, false, 1);
-	uint16_t tmp = rv->io.mem_read_s(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        rv->X[ir->rd] = sign_extend_h(tmp);
+        rv->X[ir->rd] = sign_extend_h(rv->io.mem_read_s(rv, addr));
     },
     GEN({
         mem;
@@ -582,21 +569,8 @@ RVOP(
     {
 
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
-        //if(rv->PC == 0xc0002470){
-	//	printf("lw here\n");
-	//	printf("old addr: 0x%x\n", rv->X[ir->rs1]);
-	//	printf("imm: 0x%x\n", ir->imm);
-	//}
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        rv->X[ir->rd] = tmp;
-        //if(rv->PC == 0xc0002470){
-	//	printf("a2: 0x%x\n", rv->X[ir->rd]);
-	//}
+        rv->X[ir->rd] = rv->io.mem_read_w(rv, addr);
     },
     GEN({
         mem;
@@ -611,12 +585,8 @@ RVOP(
 RVOP(
     lbu,
     {
-	uint8_t tmp = rv->io.mem_read_b(rv, rv->X[ir->rs1] + ir->imm);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-    rv->X[ir->rd] = tmp;
+    	uint32_t addr = rv->X[ir->rs1] + ir->imm;
+        rv->X[ir->rd] = rv->io.mem_read_b(rv, addr);
     },
     GEN({
         mem;
@@ -632,19 +602,8 @@ RVOP(
     lhu,
     {
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
-    if(addr == 0){
-    	printf("lhu at 0 !!!\n");
-    	printf("rv->X[rs1]: %d\n", rv->X[ir->rs1]);
-    	printf("imm: %d\n", ir->imm);
-    	printf("PC: %x\n", rv->PC);
-    }
         RV_EXC_MISALIGN_HANDLER(1, load, false, 1);
-	uint16_t tmp = rv->io.mem_read_s(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        rv->X[ir->rd] = tmp;
+        rv->X[ir->rd] = rv->io.mem_read_s(rv, addr);
     },
     GEN({
         mem;
@@ -665,7 +624,8 @@ RVOP(
 RVOP(
     sb,
     {
-    rv->io.mem_write_b(rv, rv->X[ir->rs1] + ir->imm, rv->X[ir->rs2]);
+        const uint32_t addr = rv->X[ir->rs1] + ir->imm;
+        rv->io.mem_write_b(rv, addr, rv->X[ir->rs2]);
     },
     GEN({
         mem;
@@ -1075,31 +1035,8 @@ RVOP(
 RVOP(
     sret,
     {
-	//printf("sret pc: 0x%x\n", rv->csr_sepc);
-	if(rv->is_nested_trapped){
-        //    rv->is_nested_trapped = false;
-        //rv->priv_mode = (rv->csr_sstatus & MSTATUS_SPP) >> MSTATUS_SPP_SHIFT;
-        //rv->csr_sstatus &= ~(MSTATUS_SPP);
-
-        //const uint32_t sstatus_spie =
-        //    (rv->csr_sstatus & SSTATUS_SPIE) >> SSTATUS_SPIE_SHIFT;
-        //rv->csr_sstatus |= (sstatus_spie << SSTATUS_SIE_SHIFT);
-        //rv->csr_sstatus |= SSTATUS_SPIE;
-
-	////printf("PC: 0x%x, sepc: 0x%x\n", rv->PC, rv->csr_sepc);
-	////exit(1);
-        //rv->PC = rv->nested_sepc;
-        //rv->csr_scause = rv->nested_scause;
-        //rv->csr_stval = rv->nested_stval;
-	//printf("nested sret sepc: 0x%x\n", rv->PC);
-	} else {
-
-		//printf("sret here\n");
-            rv->is_trapped = false;
-	    //printf("restore first, spp: %d, sstatus: %x\n", (rv->csr_sstatus & SSTATUS_SPP) >> SSTATUS_SPP_SHIFT, rv->csr_sstatus);
-
+        rv->is_trapped = false;
         rv->priv_mode = (rv->csr_sstatus & SSTATUS_SPP) >> SSTATUS_SPP_SHIFT;
-	    //printf("sret before sstatus: %x\n", rv->csr_sstatus);
         rv->csr_sstatus &= ~(SSTATUS_SPP);
 
         const uint32_t sstatus_spie =
@@ -1107,22 +1044,8 @@ RVOP(
         rv->csr_sstatus |= (sstatus_spie << SSTATUS_SIE_SHIFT);
         rv->csr_sstatus |= SSTATUS_SPIE;
 
-    	//printf("sret sum sstatus: 0x%x \n", (rv->csr_sstatus & SSTATUS_SUM) >> SSTATUS_SUM_SHIFT);
-    	//printf("sret after sstatus: 0x%x\n", rv->csr_sstatus);
-	//exit(1);
         rv->PC = rv->csr_sepc;
-	//printf("--------------------\n");
-	//printf("sret\n");
-	//printf("sret spp: %d\n", rv->priv_mode);
-	//printf("sret sepc: 0x%x\n", rv->PC);
-	//printf("sret sum: %d\n", (rv->csr_sstatus & SSTATUS_SUM) >> SSTATUS_SUM_SHIFT);
-	//printf("--------------------\n");
-	can_trapped = true;
-	}
 
-	//printf("can trapped now!!!!!\n");
-
-	//exit(1);
         return true;
     },
     GEN({
@@ -1198,12 +1121,6 @@ RVOP(
     fence,
     {
         PC += 4;
-	if((PC >> 20) == 0x957){
-	}
-	if(rv->PC == 0xc01c1a6c){
-	//printf("fence here, reg 19: %d\n", rv->X[19]);
-	//printf("reg 20(s4): %x\n", rv->X[20]);
-	}
         /* FIXME: fill real implementations */
         rv->csr_cycle = cycle;
         rv->PC = PC;
@@ -1219,16 +1136,8 @@ RVOP(
 RVOP(
     csrrw,
     {
-	//if(ir->imm == CSR_SEPC){
-	//printf("xxxxxrd: %d, rd: 0x%x, a2: 0x%x\n", ir->rd, rv->X[ir->rd], rv->X[12]);
-	//}
         uint32_t tmp = csr_csrrw(rv, ir->imm, rv->X[ir->rs1]);
-	//if(ir->imm == CSR_SEPC){
-	//printf("ret tmp: 0x%x\n", tmp);
-	//}
         rv->X[ir->rd] = ir->rd ? tmp : rv->X[ir->rd];
-
-	//printf("(((((((after PC: 0x%x, new spec: 0x%x\n", rv->PC, rv->csr_sepc);
     },
     GEN({
         assert; /* FIXME: Implement */
@@ -1258,17 +1167,6 @@ RVOP(
 RVOP(
     csrrc,
     {
-        //if(rv->PC == 0xc0002354){
-	//	printf("csrr here\n");
-	//	exit(1);
-	//}
-    	if(ir->imm == CSR_SSTATUS){
-		if(rv->X[ir->rs1] == 0x40000){
-			//printf("csrrc clear SUM\n");
-		}
-		//printf("csrrsi %x\n", ir->rs1);
-		//printf("original sstatus: %x\n", rv->csr_sstatus);
-	}
         uint32_t tmp = csr_csrrc(
             rv, ir->imm, (ir->rs1 == rv_reg_zero) ? 0U : rv->X[ir->rs1]);
         rv->X[ir->rd] = ir->rd ? tmp : rv->X[ir->rd];
@@ -1292,10 +1190,6 @@ RVOP(
 RVOP(
     csrrsi,
     {
-    	if(ir->imm == CSR_SSTATUS){
-		//printf("csrrsi %x\n", ir->rs1);
-		//printf("original sstatus: %x\n", rv->csr_sstatus);
-	}
         uint32_t tmp = csr_csrrs(rv, ir->imm, ir->rs1);
         rv->X[ir->rd] = ir->rd ? tmp : rv->X[ir->rd];
     },
@@ -1307,13 +1201,6 @@ RVOP(
 RVOP(
     csrrci,
     {
-    	if(ir->imm == CSR_SSTATUS){
-		//printf("csrrsi %x\n", ir->rs1);
-		//printf("original sstatus: %x\n", rv->csr_sstatus);
-		if(ir->rs1 == 0x40000){
-			//printf("csrrci clear SUM\n");
-		}
-	}
         uint32_t tmp = csr_csrrc(rv, ir->imm, ir->rs1);
         rv->X[ir->rd] = ir->rd ? tmp : rv->X[ir->rd];
     },
@@ -1527,13 +1414,8 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
         if (ir->rd)
-            rv->X[ir->rd] = tmp;
+            rv->X[ir->rd] = rv->io.mem_read_w(rv, addr);
         /* skip registration of the 'reservation set'
          * FIXME: unimplemented
          */
@@ -1549,11 +1431,6 @@ RVOP(
         /* assume the 'reservation set' is valid
          * FIXME: unimplemented
          */
-        //if(rv->PC == 0xc0002474){
-	//	printf("jhere\n");
-	//	printf("a2: 0x%x\n", rv->X[12]);
-	//	exit(1);
-	//}
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, store, false, 1);
         rv->io.mem_write_w(rv, addr, rv->X[ir->rs2]);
@@ -1569,12 +1446,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1590,12 +1462,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1612,12 +1479,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1634,12 +1496,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1656,12 +1513,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1678,12 +1530,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1702,12 +1549,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1726,12 +1568,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1748,12 +1585,7 @@ RVOP(
     {
         const uint32_t addr = rv->X[ir->rs1];
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        const uint32_t value1 = tmp;
+        const uint32_t value1 = rv->io.mem_read_w(rv, addr);
         const uint32_t value2 = rv->X[ir->rs2];
         if (ir->rd)
             rv->X[ir->rd] = value1;
@@ -1775,12 +1607,7 @@ RVOP(
         /* copy into the float register */
         const uint32_t addr = rv->X[ir->rs1] + ir->imm;
         RV_EXC_MISALIGN_HANDLER(3, load, false, 1);
-	uint32_t tmp = rv->io.mem_read_w(rv, addr);
-	if(rv->is_trapped){
-		rv->is_trapped = false;
-		return true;
-	}
-        rv->F[ir->rd].v = tmp;
+        rv->F[ir->rd].v = rv->io.mem_read_w(rv, addr);
     },
     GEN({
         assert; /* FIXME: Implement */
@@ -2209,10 +2036,6 @@ RVOP(
     {
         rv->X[rv_reg_ra] = PC + 2;
         PC += ir->imm;
-	if((PC >> 20) == 0x957){
-		printf("cjal == 0x957, prev pc: 0x%x\n", PC);
-		exit(1);
-	}
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
 #if RV32_HAS(JIT)
@@ -2223,7 +2046,9 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    if(!rv->is_trapped){
+		    MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    }
         }
         goto end_op;
     },
@@ -2374,10 +2199,6 @@ RVOP(
     cj,
     {
         PC += ir->imm;
-	if((PC >> 20) == 0x957){
-		printf("cjal == 0x957, prev pc: 0x%x\n", PC);
-		exit(1);
-	}
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
 #if RV32_HAS(JIT)
@@ -2388,7 +2209,9 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    if(!rv->is_trapped){
+		    MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    }
         }
         goto end_op;
     },
@@ -2421,31 +2244,29 @@ RVOP(
                 goto nextop;
 #endif
             PC += 2;
-	if((PC >> 20) == 0x957){
-		printf("cjal == 0x957, prev pc: 0x%x\n", PC);
-		exit(1);
-	}
             last_pc = PC;
-            MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);
+	    if(!rv->is_trapped){
+		    MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);
+	    }
+
+	    goto end_op;
         }
-        is_branch_taken = true;
-        PC += ir->imm;
-	if((PC >> 20) == 0x957){
-		printf("cjal == 0x957, prev pc: 0x%x\n", PC);
-		exit(1);
-	}
-        struct rv_insn *taken = ir->branch_taken;
-        if (taken) {
+        	is_branch_taken = true;
+        	PC += ir->imm;
+        	struct rv_insn *taken = ir->branch_taken;
+        	if (taken) {
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC, true);
-            if (!set_add(&pc_set, PC))
-                has_loops = true;
-            if (cache_hot(rv->block_cache, PC))
-                goto end_op;
+            		cache_get(rv->block_cache, PC, true);
+            		if (!set_add(&pc_set, PC))
+            		    has_loops = true;
+            		if (cache_hot(rv->block_cache, PC))
+            		    goto end_op;
 #endif
-            last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
-        }
+            		last_pc = PC;
+	    		if(!rv->is_trapped){
+	    		        MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+			}
+            	}
         goto end_op;
     },
     GEN({
@@ -2486,19 +2307,15 @@ RVOP(
                 goto nextop;
 #endif
             PC += 2;
-	if((PC >> 20) == 0x957){
-		printf("cjal == 0x957, prev pc: 0x%x\n", PC);
-		exit(1);
-	}
             last_pc = PC;
-            MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);
+	    if(!rv->is_trapped){
+		    MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);
+	    }
+
+	    goto end_op;
         }
         is_branch_taken = true;
         PC += ir->imm;
-	if((PC >> 20) == 0x957){
-		printf("cjal == 0x957, prev pc: 0x%x\n", PC);
-		exit(1);
-	}
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
 #if RV32_HAS(JIT)
@@ -2509,7 +2326,9 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-            MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    if(!rv->is_trapped){
+		    MUST_TAIL return taken->impl(rv, taken, cycle, PC);
+	    }
         }
         goto end_op;
     },
@@ -2620,10 +2439,6 @@ RVOP(
         const int32_t jump_to = rv->X[ir->rs1];
         rv->X[rv_reg_ra] = PC + 2;
         PC = jump_to;
-	if((PC >> 20) == 0x957){
-		printf("cjalr == 0x957, prev pc: 0x%x\n", PC);
-		//exit(1);
-	}
         LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE();
         goto end_op;
     },

@@ -33,10 +33,10 @@ enum op_field {
  */
 /* clang-format off */
 #define RV_INSN_LIST                                   \
-    _(nop, 1, 4, 1, ENC(rs1, rd))                      \
+    _(nop, 0, 4, 1, ENC(rs1, rd))                      \
     /* RV32I Base Instruction Set */                   \
-    _(lui, 1, 4, 1, ENC(rd))                           \
-    _(auipc, 1, 4, 1, ENC(rd))                         \
+    _(lui, 0, 4, 1, ENC(rd))                           \
+    _(auipc, 0, 4, 1, ENC(rd))                         \
     _(jal, 1, 4, 1, ENC(rd))                           \
     _(jalr, 1, 4, 1, ENC(rs1, rd))                     \
     _(beq, 1, 4, 1, ENC(rs1, rs2))                     \
@@ -45,145 +45,145 @@ enum op_field {
     _(bge, 1, 4, 1, ENC(rs1, rs2))                     \
     _(bltu, 1, 4, 1, ENC(rs1, rs2))                    \
     _(bgeu, 1, 4, 1, ENC(rs1, rs2))                    \
-    _(lb, 1, 4, 1, ENC(rs1, rd))                       \
-    _(lh, 1, 4, 1, ENC(rs1, rd))                       \
-    _(lw, 1, 4, 1, ENC(rs1, rd))                       \
-    _(lbu, 1, 4, 1, ENC(rs1, rd))                      \
-    _(lhu, 1, 4, 1, ENC(rs1, rd))                      \
-    _(sb, 1, 4, 1, ENC(rs1, rs2))                      \
-    _(sh, 1, 4, 1, ENC(rs1, rs2))                      \
-    _(sw, 1, 4, 1, ENC(rs1, rs2))                      \
-    _(addi, 1, 4, 1, ENC(rs1, rd))                     \
-    _(slti, 1, 4, 1, ENC(rs1, rd))                     \
-    _(sltiu, 1, 4, 1, ENC(rs1, rd))                    \
-    _(xori, 1, 4, 1, ENC(rs1, rd))                     \
-    _(ori, 1, 4, 1, ENC(rs1, rd))                      \
-    _(andi, 1, 4, 1, ENC(rs1, rd))                     \
-    _(slli, 1, 4, 1, ENC(rs1, rd))                     \
-    _(srli, 1, 4, 1, ENC(rs1, rd))                     \
-    _(srai, 1, 4, 1, ENC(rs1, rd))                     \
-    _(add, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(sub, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(sll, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(slt, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(sltu, 1, 4, 1, ENC(rs1, rs2, rd))                \
-    _(xor, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(srl, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(sra, 1, 4, 1, ENC(rs1, rs2, rd))                 \
-    _(or, 1, 4, 1, ENC(rs1, rs2, rd))                  \
-    _(and, 1, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(lb, 0, 4, 1, ENC(rs1, rd))                       \
+    _(lh, 0, 4, 1, ENC(rs1, rd))                       \
+    _(lw, 0, 4, 1, ENC(rs1, rd))                       \
+    _(lbu, 0, 4, 1, ENC(rs1, rd))                      \
+    _(lhu, 0, 4, 1, ENC(rs1, rd))                      \
+    _(sb, 0, 4, 1, ENC(rs1, rs2))                      \
+    _(sh, 0, 4, 1, ENC(rs1, rs2))                      \
+    _(sw, 0, 4, 1, ENC(rs1, rs2))                      \
+    _(addi, 0, 4, 1, ENC(rs1, rd))                     \
+    _(slti, 0, 4, 1, ENC(rs1, rd))                     \
+    _(sltiu, 0, 4, 1, ENC(rs1, rd))                    \
+    _(xori, 0, 4, 1, ENC(rs1, rd))                     \
+    _(ori, 0, 4, 1, ENC(rs1, rd))                      \
+    _(andi, 0, 4, 1, ENC(rs1, rd))                     \
+    _(slli, 0, 4, 1, ENC(rs1, rd))                     \
+    _(srli, 0, 4, 1, ENC(rs1, rd))                     \
+    _(srai, 0, 4, 1, ENC(rs1, rd))                     \
+    _(add, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(sub, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(sll, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(slt, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(sltu, 0, 4, 1, ENC(rs1, rs2, rd))                \
+    _(xor, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(srl, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(sra, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(or, 0, 4, 1, ENC(rs1, rs2, rd))                  \
+    _(and, 0, 4, 1, ENC(rs1, rs2, rd))                 \
+    _(fence, 1, 4, 0, ENC(rs1, rd))                    \
     _(ecall, 1, 4, 1, ENC(rs1, rd))                    \
     _(ebreak, 1, 4, 1, ENC(rs1, rd))                   \
     /* RISC-V Privileged Instruction */                \
-    _(wfi, 1, 4, 0, ENC(rs1, rd))                      \
-    _(uret, 1, 4, 0, ENC(rs1, rd))                     \
+    _(wfi, 0, 4, 0, ENC(rs1, rd))                      \
+    _(uret, 0, 4, 0, ENC(rs1, rd))                     \
     _(sret, 1, 4, 0, ENC(rs1, rd))                     \
-    _(hret, 1, 4, 0, ENC(rs1, rd))                     \
+    _(hret, 0, 4, 0, ENC(rs1, rd))                     \
     _(mret, 1, 4, 0, ENC(rs1, rd))                     \
     _(sfencevma, 1, 4, 0, ENC(rs1, rs2, rd))           \
     /* RV32 Zifencei Standard Extension */             \
     IIF(RV32_HAS(Zifencei))(                           \
-        _(fence, 1, 4, 0, ENC(rs1, rd))               \
         _(fencei, 1, 4, 0, ENC(rs1, rd))               \
     )                                                  \
     /* RV32 Zicsr Standard Extension */                \
     IIF(RV32_HAS(Zicsr))(                              \
         _(csrrw, 1, 4, 0, ENC(rs1, rd))                \
-        _(csrrs, 1, 4, 0, ENC(rs1, rd))                \
-        _(csrrc, 1, 4, 0, ENC(rs1, rd))                \
-        _(csrrwi, 1, 4, 0, ENC(rs1, rd))               \
-        _(csrrsi, 1, 4, 0, ENC(rs1, rd))               \
-        _(csrrci, 1, 4, 0, ENC(rs1, rd))               \
+        _(csrrs, 0, 4, 0, ENC(rs1, rd))                \
+        _(csrrc, 0, 4, 0, ENC(rs1, rd))                \
+        _(csrrwi, 0, 4, 0, ENC(rs1, rd))               \
+        _(csrrsi, 0, 4, 0, ENC(rs1, rd))               \
+        _(csrrci, 0, 4, 0, ENC(rs1, rd))               \
     )                                                  \
     /* RV32M Standard Extension */                     \
     IIF(RV32_HAS(EXT_M))(                              \
-        _(mul, 1, 4, 1, ENC(rs1, rs2, rd))             \
-        _(mulh, 1, 4, 1, ENC(rs1, rs2, rd))            \
-        _(mulhsu, 1, 4, 1, ENC(rs1, rs2, rd))          \
-        _(mulhu, 1, 4, 1, ENC(rs1, rs2, rd))           \
-        _(div, 1, 4, 1, ENC(rs1, rs2, rd))             \
-        _(divu, 1, 4, 1, ENC(rs1, rs2, rd))            \
-        _(rem, 1, 4, 1, ENC(rs1, rs2, rd))             \
-        _(remu, 1, 4, 1, ENC(rs1, rs2, rd))            \
+        _(mul, 0, 4, 1, ENC(rs1, rs2, rd))             \
+        _(mulh, 0, 4, 1, ENC(rs1, rs2, rd))            \
+        _(mulhsu, 0, 4, 1, ENC(rs1, rs2, rd))          \
+        _(mulhu, 0, 4, 1, ENC(rs1, rs2, rd))           \
+        _(div, 0, 4, 1, ENC(rs1, rs2, rd))             \
+        _(divu, 0, 4, 1, ENC(rs1, rs2, rd))            \
+        _(rem, 0, 4, 1, ENC(rs1, rs2, rd))             \
+        _(remu, 0, 4, 1, ENC(rs1, rs2, rd))            \
     )                                                  \
     /* RV32A Standard Extension */                     \
     IIF(RV32_HAS(EXT_A))(                              \
-        _(lrw, 1, 4, 0, ENC(rs1, rs2, rd))             \
-        _(scw, 1, 4, 0, ENC(rs1, rs2, rd))             \
-        _(amoswapw, 1, 4, 0, ENC(rs1, rs2, rd))        \
-        _(amoaddw, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(amoxorw, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(amoandw, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(amoorw, 1, 4, 0, ENC(rs1, rs2, rd))          \
-        _(amominw, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(amomaxw, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(amominuw, 1, 4, 0, ENC(rs1, rs2, rd))        \
-        _(amomaxuw, 1, 4, 0, ENC(rs1, rs2, rd))        \
+        _(lrw, 0, 4, 0, ENC(rs1, rs2, rd))             \
+        _(scw, 0, 4, 0, ENC(rs1, rs2, rd))             \
+        _(amoswapw, 0, 4, 0, ENC(rs1, rs2, rd))        \
+        _(amoaddw, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(amoxorw, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(amoandw, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(amoorw, 0, 4, 0, ENC(rs1, rs2, rd))          \
+        _(amominw, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(amomaxw, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(amominuw, 0, 4, 0, ENC(rs1, rs2, rd))        \
+        _(amomaxuw, 0, 4, 0, ENC(rs1, rs2, rd))        \
     )                                                  \
     /* RV32F Standard Extension */                     \
     IIF(RV32_HAS(EXT_F))(                              \
-        _(flw, 1, 4, 0, ENC(rs1, rd))                  \
-        _(fsw, 1, 4, 0, ENC(rs1, rs2))                 \
-        _(fmadds, 1, 4, 0, ENC(rs1, rs2, rs3, rd))     \
-        _(fmsubs, 1, 4, 0, ENC(rs1, rs2, rs3, rd))     \
-        _(fnmsubs, 1, 4, 0, ENC(rs1, rs2, rs3, rd))    \
-        _(fnmadds, 1, 4, 0, ENC(rs1, rs2, rs3, rd))    \
-        _(fadds, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(fsubs, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(fmuls, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(fdivs, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(fsqrts, 1, 4, 0, ENC(rs1, rs2, rd))          \
-        _(fsgnjs, 1, 4, 0, ENC(rs1, rs2, rd))          \
-        _(fsgnjns, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(fsgnjxs, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(fmins, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(fmaxs, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(fcvtws, 1, 4, 0, ENC(rs1, rs2, rd))          \
-        _(fcvtwus, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(fmvxw, 1, 4, 0, ENC(rs1, rs2, rd))           \
-        _(feqs, 1, 4, 0, ENC(rs1, rs2, rd))            \
-        _(flts, 1, 4, 0, ENC(rs1, rs2, rd))            \
-        _(fles, 1, 4, 0, ENC(rs1, rs2, rd))            \
-        _(fclasss, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(fcvtsw, 1, 4, 0, ENC(rs1, rs2, rd))          \
-        _(fcvtswu, 1, 4, 0, ENC(rs1, rs2, rd))         \
-        _(fmvwx, 1, 4, 0, ENC(rs1, rs2, rd))           \
+        _(flw, 0, 4, 0, ENC(rs1, rd))                  \
+        _(fsw, 0, 4, 0, ENC(rs1, rs2))                 \
+        _(fmadds, 0, 4, 0, ENC(rs1, rs2, rs3, rd))     \
+        _(fmsubs, 0, 4, 0, ENC(rs1, rs2, rs3, rd))     \
+        _(fnmsubs, 0, 4, 0, ENC(rs1, rs2, rs3, rd))    \
+        _(fnmadds, 0, 4, 0, ENC(rs1, rs2, rs3, rd))    \
+        _(fadds, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(fsubs, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(fmuls, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(fdivs, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(fsqrts, 0, 4, 0, ENC(rs1, rs2, rd))          \
+        _(fsgnjs, 0, 4, 0, ENC(rs1, rs2, rd))          \
+        _(fsgnjns, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(fsgnjxs, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(fmins, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(fmaxs, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(fcvtws, 0, 4, 0, ENC(rs1, rs2, rd))          \
+        _(fcvtwus, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(fmvxw, 0, 4, 0, ENC(rs1, rs2, rd))           \
+        _(feqs, 0, 4, 0, ENC(rs1, rs2, rd))            \
+        _(flts, 0, 4, 0, ENC(rs1, rs2, rd))            \
+        _(fles, 0, 4, 0, ENC(rs1, rs2, rd))            \
+        _(fclasss, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(fcvtsw, 0, 4, 0, ENC(rs1, rs2, rd))          \
+        _(fcvtswu, 0, 4, 0, ENC(rs1, rs2, rd))         \
+        _(fmvwx, 0, 4, 0, ENC(rs1, rs2, rd))           \
     )                                                  \
     /* RV32C Standard Extension */                     \
     IIF(RV32_HAS(EXT_C))(                              \
-        _(caddi4spn, 1, 2, 1, ENC(rd))                 \
-        _(clw, 1, 2, 1, ENC(rs1, rd))                  \
-        _(csw, 1, 2, 1, ENC(rs1, rs2))                 \
-        _(cnop, 1, 2, 1, ENC())                        \
-        _(caddi, 1, 2, 1, ENC(rd))                     \
+        _(caddi4spn, 0, 2, 1, ENC(rd))                 \
+        _(clw, 0, 2, 1, ENC(rs1, rd))                  \
+        _(csw, 0, 2, 1, ENC(rs1, rs2))                 \
+        _(cnop, 0, 2, 1, ENC())                        \
+        _(caddi, 0, 2, 1, ENC(rd))                     \
         _(cjal, 1, 2, 1, ENC())                        \
-        _(cli, 1, 2, 1, ENC(rd))                       \
-        _(caddi16sp, 1, 2, 1, ENC())                   \
-        _(clui, 1, 2, 1, ENC(rd))                      \
-        _(csrli, 1, 2, 1, ENC(rs1))                    \
-        _(csrai, 1, 2, 1, ENC(rs1))                    \
-        _(candi, 1, 2, 1, ENC(rs1))                    \
-        _(csub, 1, 2, 1, ENC(rs1, rs2, rd))            \
-        _(cxor, 1, 2, 1, ENC(rs1, rs2, rd))            \
-        _(cor, 1, 2, 1, ENC(rs1, rs2, rd))             \
-        _(cand, 1, 2, 1, ENC(rs1, rs2, rd))            \
+        _(cli, 0, 2, 1, ENC(rd))                       \
+        _(caddi16sp, 0, 2, 1, ENC())                   \
+        _(clui, 0, 2, 1, ENC(rd))                      \
+        _(csrli, 0, 2, 1, ENC(rs1))                    \
+        _(csrai, 0, 2, 1, ENC(rs1))                    \
+        _(candi, 0, 2, 1, ENC(rs1))                    \
+        _(csub, 0, 2, 1, ENC(rs1, rs2, rd))            \
+        _(cxor, 0, 2, 1, ENC(rs1, rs2, rd))            \
+        _(cor, 0, 2, 1, ENC(rs1, rs2, rd))             \
+        _(cand, 0, 2, 1, ENC(rs1, rs2, rd))            \
         _(cj, 1, 2, 1, ENC())                          \
         _(cbeqz, 1, 2, 1, ENC(rs1))                    \
         _(cbnez, 1, 2, 1, ENC(rs1))                    \
-        _(cslli, 1, 2, 1, ENC(rd))                     \
-        _(clwsp, 1, 2, 1, ENC(rd))                     \
+        _(cslli, 0, 2, 1, ENC(rd))                     \
+        _(clwsp, 0, 2, 1, ENC(rd))                     \
         _(cjr, 1, 2, 1, ENC(rs1, rs2, rd))             \
-        _(cmv, 1, 2, 1, ENC(rs1, rs2, rd))             \
+        _(cmv, 0, 2, 1, ENC(rs1, rs2, rd))             \
         _(cebreak, 1, 2, 1,ENC(rs1, rs2, rd))          \
         _(cjalr, 1, 2, 1, ENC(rs1, rs2, rd))           \
-        _(cadd, 1, 2, 1, ENC(rs1, rs2, rd))            \
-        _(cswsp, 1, 2, 1, ENC(rs2))                    \
+        _(cadd, 0, 2, 1, ENC(rs1, rs2, rd))            \
+        _(cswsp, 0, 2, 1, ENC(rs2))                    \
         /* RV32FC Instruction */                       \
         IIF(RV32_HAS(EXT_F))(                          \
-            _(cflwsp, 1, 2, 1, ENC(rd))                \
-            _(cfswsp, 1, 2, 1, ENC(rs2))               \
-            _(cflw, 1, 2, 1, ENC(rs1, rd))             \
-            _(cfsw, 1, 2, 1, ENC(rs1, rs2))            \
+            _(cflwsp, 0, 2, 1, ENC(rd))                \
+            _(cfswsp, 0, 2, 1, ENC(rs2))               \
+            _(cflw, 0, 2, 1, ENC(rs1, rd))             \
+            _(cfsw, 0, 2, 1, ENC(rs1, rs2))            \
         )                                              \
     )
 /* clang-format on */
