@@ -8,7 +8,7 @@ check_platform
 
 mkdir -p toolchain
 
-if [[ "$1" -eq "riscv-collab" ]]; then
+if [[ "$#" = 0 ]] || [[ "$1" != "riscv-collab" ]]; then
     UBUNTU_VER=`lsb_release -r | cut -f2`
     GCC_VER=2024.04.12
     TOOLCHAIN_REPO=https://github.com/riscv-collab/riscv-gnu-toolchain
