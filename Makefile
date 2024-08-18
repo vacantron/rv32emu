@@ -246,7 +246,7 @@ EXPECTED_pi = 3.1415926535897932384626433832795028841971693993751058209749445923
 check: $(BIN) build-testbenches
 	$(Q)$(foreach e,$(CHECK_ELF_FILES),\
 	    $(PRINTF) "Running $(e) ... "; \
-	    if [ "$(shell $(BIN) $(OUT)/bin/riscv32/$(e) | uniq)" = "$(strip $(EXPECTED_$(e))) inferior exit code 0" ]; then \
+	    if [ "$(shell $(BIN) $(OUT)/riscv32/$(e) | uniq)" = "$(strip $(EXPECTED_$(e))) inferior exit code 0" ]; then \
 	    $(call notice, [OK]); \
 	    else \
 	    $(PRINTF) "Failed.\n"; \
@@ -257,7 +257,7 @@ check: $(BIN) build-testbenches
 EXPECTED_aes_sha1 = f9924635666d3d58d5b60c0bde8b986a2a99effb  -
 misalign: $(BIN) build-testbenches
 	$(Q)$(PRINTF) "Running aes ... ";
-	$(Q)if [ "$(shell $(BIN) -m $(OUT)/bin/riscv32/aes | $(SHA1SUM))" = "$(EXPECTED_aes_sha1)" ]; then \
+	$(Q)if [ "$(shell $(BIN) -m $(OUT)/riscv32/aes | $(SHA1SUM))" = "$(EXPECTED_aes_sha1)" ]; then \
 	    $(call notice, [OK]); \
 	    else \
 	    $(PRINTF) "Failed.\n"; \

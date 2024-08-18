@@ -344,7 +344,7 @@ $ make build-testbenches USE_PREBUILT=0 CROSS_CC=<riscv-cross-compiler>
 
 Notice that the RISC-V cross-compiler is required to build the binary.
 
-In default, `rv32emu` will download the tarball from GitHub and extract the executables into `build/bin/`.
+In default, `rv32emu` will download the tarball from GitHub and extract the executables into `build/`.
 
 There are still some prebuilt ELF files for testing purpose under `build/`.
 * `cc.elf` : See [tests/cc](tests/cc)
