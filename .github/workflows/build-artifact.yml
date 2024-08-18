@@ -48,8 +48,8 @@ jobs:
           sudo apt-get upgrade -q -y
           sudo apt-get install -q -y gcc-multilib g++-multilib
           .ci/riscv-toolchain-install.sh
-          echo "$PATH" >> $GITHUB_PATH
-      - name: Build RISC-V binaries
+          echo "$PWD/toolchain/bin" >> $GITHUB_PATH
+      - name: Build binaries
         run: |
           make build-artifact USE_PREBUILT=0
       - name: Create tarball
