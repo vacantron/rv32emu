@@ -1,4 +1,4 @@
-name: Build testbenches
+name: Build artifact
 
 on:
   push:
