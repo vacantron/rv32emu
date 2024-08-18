@@ -30,7 +30,7 @@ jobs:
           if [[ ${{ steps.files-changed.outputs.any_changed }} == true ]]; then
             echo "has_files_changed=true" >> $GITHUB_OUTPUT
           else
-            ehco "has_files_changed=false" >> $GITHUB_OUTPUT
+            echo "has_files_changed=false" >> $GITHUB_OUTPUT
           fi
     outputs:
       has_files_changed: ${{ steps.has_files_changed.outputs.has_files_changed }}
