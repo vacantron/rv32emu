@@ -1,7 +1,7 @@
 USE_PREBUILT ?= 1
 
 CC ?= gcc
-CROSS_COMPILE ?= riscv-none-elf-gcc
+CROSS_COMPILE ?= riscv-none-elf-
 
 BINDIR := $(abspath $(OUT))
 
@@ -51,6 +51,6 @@ else
 	@$(foreach tb,$(TESTBENCHES), \
 	    $(CC) -m32 -O2 -Wno-unused-result -o $(BINDIR)/linux-x64/$(tb) tests/$(tb).c -lm &&) true
 	@$(foreach tb,$(TESTBENCHES), \
-	    $(CROSS_COMPILE) -march=rv32im -mabi=ilp32 -O2 -Wno-unused-result -Wno-implicit-function-declaration \
+	    $(CROSS_COMPILE)gcc -march=rv32im -mabi=ilp32 -O2 -Wno-unused-result -Wno-implicit-function-declaration \
 		    -o $(BINDIR)/riscv32/$(tb) tests/$(tb).c -lm -lsemihost &&) true
 endif
