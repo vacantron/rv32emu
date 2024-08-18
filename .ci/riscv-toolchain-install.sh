@@ -20,5 +20,3 @@ else
 fi
 
 wget -q ${TOOLCHAIN_URL} -O- | tar -C toolchain --strip-components=1 -xz
-
-export PATH=`pwd`/toolchain/bin:$PATH
