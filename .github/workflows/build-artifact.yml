@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - master
+      - dev
   workflow_dispatch:
 
 jobs:
@@ -35,8 +36,6 @@ jobs:
       has_files_changed: ${{ steps.has_files_changed.outputs.has_files_changed }}
 
   build-artifact:
-    needs: [detect-files-changed]
-    if: ${{ needs.detect-files-changed.outputs.has_files_changed == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout repository
