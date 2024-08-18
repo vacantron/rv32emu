@@ -59,7 +59,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.RV32EMU_PREBUILT_TOKEN }}
         run: |
-          RELEASE_TAG=$(date +'%Y.%m.%d')
+          RELEASE_TAG="2024.08.16"
           gh release create $RELEASE_TAG \
             --repo sysprog21/rv32emu-prebuilt \
             --title "$RELEASE_TAG""-nightly"
