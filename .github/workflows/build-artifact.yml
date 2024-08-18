@@ -54,7 +54,7 @@ jobs:
           make build-artifact USE_PREBUILT=0
       - name: Create tarball
         run: |
-          tar -C build rv32emu-prebuilt.tar.gz -zcf linux-x64 riscv32
+          tar -C build -zcf rv32emu-prebuilt.tar.gz linux-x64 riscv32
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.RV32EMU_PREBUILT_TOKEN }}
