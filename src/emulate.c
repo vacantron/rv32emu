@@ -306,6 +306,7 @@ static block_t *block_alloc(riscv_t *rv)
     block->hot = false;
     block->hot2 = false;
     block->has_loops = false;
+    block->ir_has_loops = false;
     block->n_invoke = 0;
     INIT_LIST_HEAD(&block->list);
 #if RV32_HAS(T2C)
@@ -830,9 +831,10 @@ static block_t *block_find_or_translate(riscv_t *rv)
         optimize_constant(rv, next);
 #if RV32_HAS(GDBSTUB)
         if (likely(!rv->debug_mode))
-#endif
             /* macro operation fusion */
+            /* t2c_ir has no fused operation yet */
             match_pattern(rv, next);
+#endif
 
 #if !RV32_HAS(JIT)
         /* insert the block into block map */

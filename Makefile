@@ -141,9 +141,15 @@ ifneq ("$(LLVM_CONFIG)", "")
 ifneq ("$(findstring -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS, "$(shell $(LLVM_CONFIG) --cflags)")", "")
 ENABLE_T2C := 1
 $(call set-feature, T2C)
+ifeq ($(call has, T2C_IR), 1)
+OBJS_EXT += t2c_ir.o
+CFLAGS += -g -I./src/ir
+LDFLAGS += -L./src/ir -lir -ldl
+else
 OBJS_EXT += t2c.o
 CFLAGS += -g $(shell $(LLVM_CONFIG) --cflags)
 LDFLAGS += $(shell $(LLVM_CONFIG) --libs)
+endif
 else
 ENABLE_T2C := 0
 $(call set-feature, T2C)
@@ -165,6 +171,20 @@ $(OUT)/jit.o: src/jit.c src/rv32_jit.c
 $(OUT)/t2c.o: src/t2c.c src/t2c_template.c
 	$(VECHO) "  CC\t$@\n"
 	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
+
+$(OUT)/t2c_ir.o: src/t2c_ir.c
+	$(VECHO) "  CC\t$@\n"
+	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
+
+# build src/ir
+$(OUT)/t2c_ir.o: ir
+
+.PHONY: ir
+
+ir:
+	git submodule update --init src/ir
+	$(MAKE) -C src/ir
+
 endif
 # For tail-call elimination, we need a specific set of build flags applied.
 # FIXME: On macOS + Apple Silicon, -fno-stack-protector might have a negative impact.

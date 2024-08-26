@@ -80,6 +80,10 @@ typedef struct block {
     uint32_t n_invoke; /**< The invoking times of T1 machine code */
     void *func;        /**< The function pointer of T2 machine code */
     struct list_head list;
+    int proc_cnt;
+    bool ir_has_loops;
+    bool ir_need_merge;
+    struct block *visited_by;
 #endif
 } block_t;
 
