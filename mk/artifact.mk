@@ -52,8 +52,10 @@ endif
 
 artifact: ieeelib scimark2
 ifeq ($(call has, PREBUILT), 1)
-	$(Q)$(PRINTF) "Fetching prebuilt executables from \"rv32emu-prebuilt\" ...\n"
-	$(Q)wget -q --show-progress https://github.com/sysprog21/rv32emu-prebuilt/releases/download/$(LATEST_RELEASE)/rv32emu-prebuilt.tar.gz -O- | tar -C build --strip-components=1 -xz
+	$(Q)if [ ! -f "$(BIN_DIR)/riscv32/aes" ]; then \
+	    $(PRINTF) "Fetching prebuilt executables from \"rv32emu-prebuilt\" ...\n"; \
+	    wget -q --show-progress https://github.com/sysprog21/rv32emu-prebuilt/releases/download/$(LATEST_RELEASE)/rv32emu-prebuilt.tar.gz -O- | tar -C build --strip-components=1 -xz; \
+	fi
 else
 	git submodule update --init $(addprefix ./tests/,$(foreach tb,$(TEST_SUITES),$(tb)))
 	$(Q)for tb in $(TEST_SUITES); do \
