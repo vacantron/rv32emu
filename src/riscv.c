@@ -187,7 +187,7 @@ IO_HANDLER_IMPL(byte, write_b, W)
 #undef R
 #undef W
 
-#if RV32_HAS(T2C)
+#if RV32_HAS(T2C) && RV32_HAS(BG_THREAD)
 static pthread_t t2c_thread;
 static void *t2c_runloop(void *arg)
 {
@@ -293,13 +293,15 @@ riscv_t *rv_create(riscv_user_t rv_attr)
     rv->block_cache = cache_create(BLOCK_MAP_CAPACITY_BITS);
     assert(rv->block_cache);
 #if RV32_HAS(T2C)
-    rv->quit = false;
     rv->jit_cache = jit_cache_init();
+#if RV32_HAS(BG_THREAD)
+    rv->quit = false;
     /* prepare wait queue. */
     pthread_mutex_init(&rv->wait_queue_lock, NULL);
     INIT_LIST_HEAD(&rv->wait_queue);
     /* activate the background compilation thread. */
     pthread_create(&t2c_thread, NULL, t2c_runloop, rv);
+#endif
 #endif
 #endif
 
@@ -386,10 +388,12 @@ void rv_delete(riscv_t *rv)
     block_map_destroy(rv);
 #else
 #if RV32_HAS(T2C)
+    jit_cache_exit(rv->jit_cache);
+#if RV32_HAS(BG_THREAD)
     rv->quit = true;
     pthread_join(t2c_thread, NULL);
     pthread_mutex_destroy(&rv->wait_queue_lock);
-    jit_cache_exit(rv->jit_cache);
+#endif
 #endif
     mpool_destroy(rv->chain_entry_mp);
     jit_state_exit(rv->jit_state);

@@ -23,6 +23,10 @@ static bool opt_trace = false;
 static bool opt_gdbstub = false;
 #endif
 
+#if !RV32_HAS(BG_THREAD)
+unsigned long t1c_delta_sum, t2c_delta_sum; /* microsecond */
+#endif
+
 /* dump registers as JSON */
 static bool opt_dump_regs = false;
 static char *registers_out_file;
@@ -245,6 +249,10 @@ int main(int argc, char **args)
     /* finalize the RISC-V runtime */
     rv_delete(rv);
 
+#if !RV32_HAS(BG_THREAD)
+    printf("T1C totally warmup time: %lu us\n", t1c_delta_sum);
+    printf("T2C totally warmup time: %lu us\n", t2c_delta_sum);
+#endif
     printf("inferior exit code %d\n", attr.exit_code);
 
 end:

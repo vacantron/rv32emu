@@ -152,6 +152,12 @@ ifneq ("$(LLVM_CONFIG)", "")
 ifneq ("$(findstring -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS, "$(shell $(LLVM_CONFIG) --cflags)")", "")
 ENABLE_T2C := 1
 $(call set-feature, T2C)
+ENABLE_BG_THREAD ?= 1
+$(call set-feature, BG_THREAD)
+ENABLE_T1C_ONLY ?= 0
+$(call set-feature, T1C_ONLY)
+ENABLE_T2C_ONLY ?= 0
+$(call set-feature, T2C_ONLY)
 OBJS_EXT += t2c.o
 CFLAGS += -g $(shell $(LLVM_CONFIG) --cflags)
 LDFLAGS += $(shell $(LLVM_CONFIG) --libs)

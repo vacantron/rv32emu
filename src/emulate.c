@@ -920,6 +920,11 @@ static bool runtime_profiler(riscv_t *rv, block_t *block)
 }
 #endif
 
+#if !RV32_HAS(BG_THREAD)
+struct timespec jit_start, jit_end;
+extern unsigned long t1c_delta_sum, t2c_delta_sum; /* microsecond */
+#endif
+
 void rv_step(void *arg)
 {
     assert(arg);
@@ -990,7 +995,7 @@ void rv_step(void *arg)
         }
         last_pc = rv->PC;
 #if RV32_HAS(JIT)
-#if RV32_HAS(T2C)
+#if !RV32_HAS(T1C_ONLY) && RV32_HAS(T2C)
         /* executed through the tier-2 JIT compiler */
         if (block->hot2) {
             ((exec_t2c_func_t) block->func)(rv);
@@ -998,12 +1003,32 @@ void rv_step(void *arg)
             continue;
         } /* check if invoking times of t1 generated code exceed threshold */
         else if (!block->compiled && block->n_invoke >= THRESHOLD) {
+#if RV32_HAS(BG_THREAD)
+#if RV32_HAS(T2C_ONLY)
+        t2c:
+#endif
             block->compiled = true;
             queue_entry_t *entry = malloc(sizeof(queue_entry_t));
             entry->block = block;
             pthread_mutex_lock(&rv->wait_queue_lock);
             list_add(&entry->list, &rv->wait_queue);
             pthread_mutex_unlock(&rv->wait_queue_lock);
+#if RV32_HAS(T2C_ONLY)
+            goto interpreter;
+#endif
+#else
+#if RV32_HAS(T2C_ONLY)
+        t2c:
+#endif
+            clock_gettime(CLOCK_REALTIME, &jit_start);
+            t2c_compile(rv, block);
+            clock_gettime(CLOCK_REALTIME, &jit_end);
+            t2c_delta_sum += (jit_end.tv_sec - jit_start.tv_sec) * 1000000 +
+                             (jit_end.tv_nsec - jit_start.tv_nsec) / 1000;
+            ((exec_t2c_func_t) block->func)(rv);
+            prev = NULL;
+            continue;
+#endif
         }
 #endif
         /* executed through the tier-1 JIT compiler */
@@ -1016,7 +1041,18 @@ void rv_step(void *arg)
             continue;
         } /* check if the execution path is potential hotspot */
         if (block->translatable && runtime_profiler(rv, block)) {
+#if RV32_HAS(T2C_ONLY)
+            goto t2c;
+#endif
+#if !RV32_HAS(BG_THREAD)
+            clock_gettime(CLOCK_REALTIME, &jit_start);
+#endif
             jit_translate(rv, block);
+#if !RV32_HAS(BG_THREAD)
+            clock_gettime(CLOCK_REALTIME, &jit_end);
+            t1c_delta_sum += (jit_end.tv_sec - jit_start.tv_sec) * 1000000 +
+                             (jit_end.tv_nsec - jit_start.tv_nsec) / 1000;
+#endif
             ((exec_block_func_t) state->buf)(
                 rv, (uintptr_t) (state->buf + block->offset));
             prev = NULL;
@@ -1024,6 +1060,9 @@ void rv_step(void *arg)
         }
         set_reset(&pc_set);
         has_loops = false;
+#endif
+#if RV32_HAS(BG_THREAD) && RV32_HAS(T2C_ONLY)
+    interpreter:;
 #endif
         /* execute the block by interpreter */
         const rv_insn_t *ir = block->ir_head;
