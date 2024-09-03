@@ -83,22 +83,22 @@ T2C_LLVM_GEN_ADDR(PC, PC, 0);
 #define T2C_LLVM_GEN_STORE_IMM32(builder, val, addr) \
     LLVMBuildStore(builder, LLVMConstInt(LLVMInt32Type(), val, true), addr)
 
-#define T2C_LLVM_GEN_LOAD_VMREG(reg, size, addr)                               \
+#define T2C_LLVM_GEN_LOAD_VMREG(reg, operand, size, addr)                      \
     do {                                                                       \
-        if (t2c_loaded_regs[ir->reg]) {                                        \
+        if (t2c_loaded_regs[operand]) {                                        \
             switch (size) {                                                    \
             case 8:                                                            \
                 val_##reg =                                                    \
-                    LLVMBuildIntCast2(*builder, t2c_loaded_regs[ir->reg],      \
+                    LLVMBuildIntCast2(*builder, t2c_loaded_regs[operand],      \
                                       LLVMInt##size##Type(), true, "");        \
                 break;                                                         \
             case 16:                                                           \
                 val_##reg =                                                    \
-                    LLVMBuildIntCast2(*builder, t2c_loaded_regs[ir->reg],      \
+                    LLVMBuildIntCast2(*builder, t2c_loaded_regs[operand],      \
                                       LLVMInt##size##Type(), true, "");        \
                 break;                                                         \
             case 32:                                                           \
-                val_##reg = t2c_loaded_regs[ir->reg];                          \
+                val_##reg = t2c_loaded_regs[operand];                          \
                 break;                                                         \
             default:                                                           \
                 assert(NULL);                                                  \
@@ -108,7 +108,7 @@ T2C_LLVM_GEN_ADDR(PC, PC, 0);
         val_##reg = LLVMBuildLoad2(*builder, LLVMInt##size##Type(), addr, ""); \
         if (size != 32)                                                        \
             break;                                                             \
-        t2c_loaded_regs[ir->reg] = val_##reg;                                  \
+        t2c_loaded_regs[operand] = val_##reg;                                  \
     } while (0)
 
 #define T2C_LLVM_GEN_ALU32_IMM(op, dst, imm) \
@@ -168,7 +168,8 @@ FORCE_INLINE void t2c_gen_call_io_func(LLVMValueRef start,
                    &io_param, 1, "");
 }
 
-static void t2c_store_all_loaded_regs(LLVMValueRef start, LLVMBuilderRef builder)
+static void t2c_store_all_loaded_regs(LLVMValueRef start,
+                                      LLVMBuilderRef builder)
 {
     for (int i = 0; i < N_RV_REGS; i++) {
         if (!t2c_loaded_regs[i])
@@ -189,6 +190,7 @@ FORCE_INLINE void t2c_clear_regs()
     memset(t2c_loaded_regs, 0, sizeof(t2c_loaded_regs));
 }
 
+static LLVMValueRef val_rs1, val_rs2, val_rd;
 static LLVMTypeRef t2c_jit_cache_func_type;
 static LLVMTypeRef t2c_jit_cache_struct_type;
 

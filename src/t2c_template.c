@@ -100,8 +100,8 @@ T2C_OP(jalr, {
      */
     t2c_store_all_loaded_regs(start, *builder);
 
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     val_rs1 = T2C_LLVM_GEN_ALU32_IMM(Add, val_rs1, ir->imm);
     val_rs1 = T2C_LLVM_GEN_ALU32_IMM(And, val_rs1, ~1U);
 
@@ -116,12 +116,10 @@ T2C_OP(jalr, {
 #define BRANCH_FUNC(type, cond)                                             \
     T2C_OP(type, {                                                          \
         t2c_store_all_loaded_regs(start, *builder);                         \
-        LLVMValueRef val_rs1;                                               \
-        LLVMValueRef val_rs2;                                               \
         LLVMValueRef addr_PC = t2c_gen_PC_addr(start, builder, ir);         \
-        T2C_LLVM_GEN_LOAD_VMREG(rs1, 32,                                    \
+        T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,                           \
                                 t2c_gen_rs1_addr(start, builder, ir));      \
-        T2C_LLVM_GEN_LOAD_VMREG(rs2, 32,                                    \
+        T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,                           \
                                 t2c_gen_rs2_addr(start, builder, ir));      \
         t2c_loaded_regs[ir->rs1] = 0;                                       \
         t2c_loaded_regs[ir->rs2] = 0;                                       \
@@ -196,37 +194,37 @@ T2C_OP(lhu, {
 })
 
 T2C_OP(sb, {
-    LLVMValueRef val_rs2;
     LLVMValueRef mem_loc = t2c_gen_mem_loc(start, builder, ir, mem_base);
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 8, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 8,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMBuildStore(*builder, val_rs2, mem_loc);
 })
 
 T2C_OP(sh, {
-    LLVMValueRef val_rs2;
     LLVMValueRef mem_loc = t2c_gen_mem_loc(start, builder, ir, mem_base);
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 16, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 16,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMBuildStore(*builder, val_rs2, mem_loc);
 })
 
 T2C_OP(sw, {
-    LLVMValueRef val_rs2;
     LLVMValueRef mem_loc = t2c_gen_mem_loc(start, builder, ir, mem_base);
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMBuildStore(*builder, val_rs2, mem_loc);
 })
 
 T2C_OP(addi, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(Add, val_rs1, ir->imm);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(slti, {
-    LLVMValueRef val_rs1;
     LLVMValueRef addr_rd = t2c_gen_rd_addr(start, builder, ir);
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     T2C_LLVM_GEN_CMP_IMM32(SLT, val_rs1, ir->imm);
     LLVMValueRef res =
         LLVMBuildSelect(*builder, cmp, LLVMConstInt(LLVMInt32Type(), 1, true),
@@ -235,9 +233,9 @@ T2C_OP(slti, {
 })
 
 T2C_OP(sltiu, {
-    LLVMValueRef val_rs1;
     LLVMValueRef addr_rd = t2c_gen_rd_addr(start, builder, ir);
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     T2C_LLVM_GEN_CMP_IMM32(ULT, val_rs1, ir->imm);
     LLVMValueRef res =
         LLVMBuildSelect(*builder, cmp, LLVMConstInt(LLVMInt32Type(), 1, true),
@@ -246,81 +244,81 @@ T2C_OP(sltiu, {
 })
 
 T2C_OP(xori, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(Xor, val_rs1, ir->imm);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(ori, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(Or, val_rs1, ir->imm);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(andi, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(And, val_rs1, ir->imm);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(slli, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(Shl, val_rs1, ir->imm & 0x1f);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(srli, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(LShr, val_rs1, ir->imm & 0x1f);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(srai, {
-    LLVMValueRef val_rs1;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
     LLVMValueRef res = T2C_LLVM_GEN_ALU32_IMM(AShr, val_rs1, ir->imm & 0x1f);
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(add, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildAdd(*builder, val_rs1, val_rs2, "add");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(sub, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildSub(*builder, val_rs1, val_rs2, "sub");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(sll, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs2 = T2C_LLVM_GEN_ALU32_IMM(And, val_rs2, 0x1f);
     LLVMValueRef res = LLVMBuildShl(*builder, val_rs1, val_rs2, "sll");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(slt, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
     LLVMValueRef addr_rd = t2c_gen_rd_addr(start, builder, ir);
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     T2C_LLVM_GEN_CMP(SLT, val_rs1, val_rs2);
     LLVMValueRef res =
         LLVMBuildSelect(*builder, cmp, LLVMConstInt(LLVMInt32Type(), 1, true),
@@ -329,11 +327,11 @@ T2C_OP(slt, {
 })
 
 T2C_OP(sltu, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
     LLVMValueRef addr_rd = t2c_gen_rd_addr(start, builder, ir);
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     T2C_LLVM_GEN_CMP(ULT, val_rs1, val_rs2);
     LLVMValueRef res =
         LLVMBuildSelect(*builder, cmp, LLVMConstInt(LLVMInt32Type(), 1, true),
@@ -342,48 +340,48 @@ T2C_OP(sltu, {
 })
 
 T2C_OP(xor, {
-  LLVMValueRef val_rs1;
-  LLVMValueRef val_rs2;
-  T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-  T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+  T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                          t2c_gen_rs1_addr(start, builder, ir));
+  T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                          t2c_gen_rs2_addr(start, builder, ir));
   LLVMValueRef res = LLVMBuildXor(*builder, val_rs1, val_rs2, "xor");
   t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(srl, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs2 = T2C_LLVM_GEN_ALU32_IMM(And, val_rs2, 0x1f);
     LLVMValueRef res = LLVMBuildLShr(*builder, val_rs1, val_rs2, "sll");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(sra, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs2 = T2C_LLVM_GEN_ALU32_IMM(And, val_rs2, 0x1f);
     LLVMValueRef res = LLVMBuildAShr(*builder, val_rs1, val_rs2, "sll");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(or, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildOr(*builder, val_rs1, val_rs2, "or");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(and, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildAnd(*builder, val_rs1, val_rs2, "and");
     t2c_loaded_regs[ir->rd] = res;
 })
@@ -440,10 +438,10 @@ T2C_OP(csrrci, { __UNREACHABLE; })
 
 #if RV32_HAS(EXT_M)
 T2C_OP(mul, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs1 = LLVMBuildSExt(*builder, val_rs1, LLVMInt64Type(), "sextrs1to64");
     val_rs2 = LLVMBuildSExt(*builder, val_rs2, LLVMInt64Type(), "sextrs2to64");
     LLVMValueRef res = LLVMBuildMul(*builder, val_rs1, val_rs2, "mul");
@@ -453,10 +451,10 @@ T2C_OP(mul, {
 })
 
 T2C_OP(mulh, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs1 = LLVMBuildSExt(*builder, val_rs1, LLVMInt64Type(), "sextrs1to64");
     val_rs2 = LLVMBuildSExt(*builder, val_rs2, LLVMInt64Type(), "sextrs2to64");
     LLVMValueRef res = LLVMBuildMul(*builder, val_rs1, val_rs2, "mul");
@@ -466,10 +464,10 @@ T2C_OP(mulh, {
 })
 
 T2C_OP(mulhsu, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs1 = LLVMBuildSExt(*builder, val_rs1, LLVMInt64Type(), "sextrs1to64");
     val_rs2 = LLVMBuildZExt(*builder, val_rs2, LLVMInt64Type(), "zextrs2to64");
     LLVMValueRef res = LLVMBuildMul(*builder, val_rs1, val_rs2, "mul");
@@ -479,10 +477,10 @@ T2C_OP(mulhsu, {
 })
 
 T2C_OP(mulhu, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     val_rs1 = LLVMBuildZExt(*builder, val_rs1, LLVMInt64Type(), "sextrs1to64");
     val_rs2 = LLVMBuildZExt(*builder, val_rs2, LLVMInt64Type(), "zextrs2to64");
     LLVMValueRef res = LLVMBuildMul(*builder, val_rs1, val_rs2, "mul");
@@ -492,37 +490,37 @@ T2C_OP(mulhu, {
 })
 
 T2C_OP(div, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildSDiv(*builder, val_rs1, val_rs2, "sdiv");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(divu, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildUDiv(*builder, val_rs1, val_rs2, "udiv");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(rem, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildSRem(*builder, val_rs1, val_rs2, "srem");
     t2c_loaded_regs[ir->rd] = res;
 })
 
 T2C_OP(remu, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rs2;
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rs2, 32, t2c_gen_rs2_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rs2, ir->rs2, 32,
+                            t2c_gen_rs2_addr(start, builder, ir));
     LLVMValueRef res = LLVMBuildURem(*builder, val_rs1, val_rs2, "urem");
     t2c_loaded_regs[ir->rd] = res;
 })
@@ -861,38 +859,30 @@ T2C_OP(cfsw, { __UNREACHABLE; })
 T2C_OP(fuse1, {
     opcode_fuse_t *fuse = ir->fuse;
     for (int i = 0; i < ir->imm2; i++) {
-        LLVMValueRef rd_offset =
-            LLVMConstInt(LLVMInt32Type(),
-                         offsetof(riscv_t, X) / sizeof(int) + fuse[i].rd, true);
-        LLVMValueRef addr_rd = LLVMBuildInBoundsGEP2(*builder, LLVMInt32Type(),
-                                                     LLVMGetParam(start, 0),
-                                                     &rd_offset, 1, "addr_rd");
-        LLVMBuildStore(*builder,
-                       LLVMConstInt(LLVMInt32Type(), fuse[i].imm, true),
-                       addr_rd);
+        LLVMValueRef addr_rd = t2c_gen_rd_addr(start, builder, &fuse[i]);
+        t2c_loaded_regs[fuse[i].rd] =
+            LLVMConstInt(LLVMInt32Type(), fuse[i].imm, true);
     }
 })
 
 T2C_OP(fuse2, {
-    LLVMValueRef val_rs1;
-    LLVMValueRef val_rd;
     LLVMValueRef addr_rd = t2c_gen_rd_addr(start, builder, ir);
     T2C_LLVM_GEN_STORE_IMM32(*builder, ir->imm, addr_rd);
-    T2C_LLVM_GEN_LOAD_VMREG(rs1, 32, t2c_gen_rs1_addr(start, builder, ir));
-    T2C_LLVM_GEN_LOAD_VMREG(rd, 32, addr_rd);
+    t2c_loaded_regs[ir->rd] = 0;
+    T2C_LLVM_GEN_LOAD_VMREG(rs1, ir->rs1, 32,
+                            t2c_gen_rs1_addr(start, builder, ir));
+    T2C_LLVM_GEN_LOAD_VMREG(rd, ir->rd, 32, addr_rd);
     LLVMValueRef res = LLVMBuildAdd(*builder, val_rs1, val_rd, "add");
-    LLVMBuildStore(*builder, res, t2c_gen_rs2_addr(start, builder, ir));
+    t2c_loaded_regs[ir->rs2] = res;
 })
 
 T2C_OP(fuse3, {
     opcode_fuse_t *fuse = ir->fuse;
     for (int i = 0; i < ir->imm2; i++) {
-        LLVMValueRef val_rs2;
         LLVMValueRef mem_loc =
-            t2c_gen_mem_loc(start, builder, (rv_insn_t *) (&fuse[i]), mem_base);
-        T2C_LLVM_GEN_LOAD_VMREG(
-            rs2, 32,
-            t2c_gen_rs2_addr(start, builder, (rv_insn_t *) (&fuse[i])));
+            t2c_gen_mem_loc(start, builder, &fuse[i], mem_base);
+        T2C_LLVM_GEN_LOAD_VMREG(rs2, fuse[i].rs2, 32,
+                                t2c_gen_rs2_addr(start, builder, &fuse[i]));
         LLVMBuildStore(*builder, val_rs2, mem_loc);
     }
 })
@@ -901,12 +891,10 @@ T2C_OP(fuse4, {
     opcode_fuse_t *fuse = ir->fuse;
     for (int i = 0; i < ir->imm2; i++) {
         LLVMValueRef mem_loc =
-            t2c_gen_mem_loc(start, builder, (rv_insn_t *) (&fuse[i]), mem_base);
+            t2c_gen_mem_loc(start, builder, &fuse[i], mem_base);
         LLVMValueRef res =
             LLVMBuildLoad2(*builder, LLVMInt32Type(), mem_loc, "res");
-        LLVMBuildStore(
-            *builder, res,
-            t2c_gen_rd_addr(start, builder, (rv_insn_t *) (&fuse[i])));
+        t2c_loaded_regs[fuse[i].rd] = res;
     }
 })
 
@@ -916,15 +904,15 @@ T2C_OP(fuse5, {
         switch (fuse[i].opcode) {
         case rv_insn_slli:
             t2c_slli(builder, param_types, start, entry, taken_builder,
-                     untaken_builder, rv, mem_base, (rv_insn_t *) (&fuse[i]));
+                     untaken_builder, rv, mem_base, &fuse[i]);
             break;
         case rv_insn_srli:
             t2c_srli(builder, param_types, start, entry, taken_builder,
-                     untaken_builder, rv, mem_base, (rv_insn_t *) (&fuse[i]));
+                     untaken_builder, rv, mem_base, &fuse[i]);
             break;
         case rv_insn_srai:
             t2c_srai(builder, param_types, start, entry, taken_builder,
-                     untaken_builder, rv, mem_base, (rv_insn_t *) (&fuse[i]));
+                     untaken_builder, rv, mem_base, &fuse[i]);
             break;
         default:
             __UNREACHABLE;
