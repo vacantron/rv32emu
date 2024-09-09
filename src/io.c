@@ -16,17 +16,15 @@
 #include "io.h"
 
 u8250_state_t *u8250_new(){
-	u8250_state_t *uart = malloc(sizeof(u8250_state_t));
+	u8250_state_t *uart = calloc(1, sizeof(u8250_state_t));
 	assert(uart);
-	memset(uart, 0, sizeof(u8250_state_t));
 
 	return uart;
 }
 
 plic_t *plic_new(){
-	plic_t *plic = malloc(sizeof(plic_t));
+	plic_t *plic = calloc(1, sizeof(plic_t));
 	assert(plic);
-	memset(plic, 0, sizeof(plic_t));
 
 	return plic;
 }
