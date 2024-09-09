@@ -1165,7 +1165,11 @@ void rv_step(void *arg)
 
         if (prev && prev->pc_start != last_pc) {
             /* update previous block */
+#if !RV32_HAS(JIT)
             prev = block_find(&rv->block_map, last_pc);
+#else
+            prev = cache_get(rv->block_cache, last_pc, false);
+#endif
         }
         /* lookup the next block in block map or translate a new block,
          * and move onto the next block.
@@ -1181,14 +1185,24 @@ void rv_step(void *arg)
          * the previous block.
          */
 
-        if (prev) {
+if (prev) {
             rv_insn_t *last_ir = prev->ir_tail;
             /* chain block */
             if (!insn_is_unconditional_branch(last_ir->opcode)) {
                 if (is_branch_taken && !last_ir->branch_taken) {
                     last_ir->branch_taken = block->ir_head;
+#if RV32_HAS(JIT)
+                    chain_entry_t *new_entry = mpool_alloc(rv->chain_entry_mp);
+                    new_entry->block = prev;
+                    list_add(&new_entry->list, &block->list);
+#endif
                 } else if (!is_branch_taken && !last_ir->branch_untaken) {
                     last_ir->branch_untaken = block->ir_head;
+#if RV32_HAS(JIT)
+                    chain_entry_t *new_entry = mpool_alloc(rv->chain_entry_mp);
+                    new_entry->block = prev;
+                    list_add(&new_entry->list, &block->list);
+#endif
                 }
             } else if (IF_insn(last_ir, jal)
 #if RV32_HAS(EXT_C)
@@ -1197,11 +1211,51 @@ void rv_step(void *arg)
             ) {
                 if (!last_ir->branch_taken) {
                     last_ir->branch_taken = block->ir_head;
+#if RV32_HAS(JIT)
+                    chain_entry_t *new_entry = mpool_alloc(rv->chain_entry_mp);
+                    new_entry->block = prev;
+                    list_add(&new_entry->list, &block->list);
+#endif
                 }
             }
         }
         last_pc = rv->PC;
-
+#if RV32_HAS(JIT)
+#if RV32_HAS(T2C)
+        /* executed through the tier-2 JIT compiler */
+        if (block->hot2) {
+            ((exec_t2c_func_t) block->func)(rv);
+            prev = NULL;
+            continue;
+        } /* check if invoking times of t1 generated code exceed threshold */
+        else if (!block->compiled && block->n_invoke >= THRESHOLD) {
+            block->compiled = true;
+            queue_entry_t *entry = malloc(sizeof(queue_entry_t));
+            entry->block = block;
+            pthread_mutex_lock(&rv->wait_queue_lock);
+            list_add(&entry->list, &rv->wait_queue);
+            pthread_mutex_unlock(&rv->wait_queue_lock);
+        }
+#endif
+        /* executed through the tier-1 JIT compiler */
+        struct jit_state *state = rv->jit_state;
+        if (block->hot) {
+            block->n_invoke++;
+            ((exec_block_func_t) state->buf)(
+                rv, (uintptr_t) (state->buf + block->offset));
+            prev = NULL;
+            continue;
+        } /* check if the execution path is potential hotspot */
+        if (block->translatable && runtime_profiler(rv, block)) {
+            jit_translate(rv, block);
+            ((exec_block_func_t) state->buf)(
+                rv, (uintptr_t) (state->buf + block->offset));
+            prev = NULL;
+            continue;
+        }
+        set_reset(&pc_set);
+        has_loops = false;
+#endif
         /* execute the block by interpreter */
         const rv_insn_t *ir = block->ir_head;
         if (unlikely(!ir->impl(rv, ir, rv->csr_cycle, rv->PC))) {
@@ -1209,8 +1263,20 @@ void rv_step(void *arg)
             prev = NULL;
             break;
         }
+#if RV32_HAS(JIT)
+        if (has_loops && !block->has_loops)
+            block->has_loops = true;
+#endif
         prev = block;
     }
+
+#ifdef __EMSCRIPTEN__
+    if (rv_has_halted(rv)) {
+        printf("inferior exit code %d\n", attr->exit_code);
+        emscripten_cancel_main_loop();
+        rv_delete(rv); /* clean up and reuse memory */
+    }
+#endif
 }
 
 #if RV32_HAS(SYSTEM)
