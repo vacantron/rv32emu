@@ -45,6 +45,10 @@ enum op_field {
     _(bge, 1, 4, 1, ENC(rs1, rs2))                     \
     _(bltu, 1, 4, 1, ENC(rs1, rs2))                    \
     _(bgeu, 1, 4, 1, ENC(rs1, rs2))                    \
+    /* FIXME: memory instructions with can_branch=0
+     * cause invalid memory unusually during system
+     * emulation
+     */                                                \
     IIF(RV32_HAS(SYSTEM))(                             \
         _(lb, 1, 4, 1, ENC(rs1, rd))                   \
         _(lh, 1, 4, 1, ENC(rs1, rd))                   \
