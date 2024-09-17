@@ -663,6 +663,7 @@ FORCE_INLINE bool insn_is_unconditional_branch(uint8_t opcode)
     case rv_insn_jalr:
     case rv_insn_sret:
     case rv_insn_mret:
+    case rv_insn_csrrw:
 #if RV32_HAS(EXT_C)
     case rv_insn_cj:
     case rv_insn_cjalr:
@@ -903,6 +904,13 @@ static void optimize_constant(riscv_t *rv UNUSED, block_t *block)
         ((constopt_func_t) constopt_table[ir->opcode])(ir, &info);
 }
 
+uint32_t vaddr_diff, last_satp;
+
+static uint32_t reduce_vaddr(riscv_t *rv, uint32_t vaddr)
+{
+    return rv->csr_satp ? vaddr : vaddr - vaddr_diff;
+}
+
 static block_t *prev = NULL;
 static block_t *block_find_or_translate(riscv_t *rv)
 {
@@ -912,7 +920,8 @@ static block_t *block_find_or_translate(riscv_t *rv)
     block_t *next = block_find(map, rv->PC);
 #else
     /* lookup the next block in the block cache */
-    block_t *next = (block_t *) cache_get(rv->block_cache, rv->PC, true);
+    block_t *next =
+        (block_t *) cache_get(rv->block_cache, reduce_vaddr(rv, rv->PC), true);
 #endif
 
     if (!next) {
@@ -927,18 +936,13 @@ static block_t *block_find_or_translate(riscv_t *rv)
         block_translate(rv, next);
 
         optimize_constant(rv, next);
-#if RV32_HAS(GDBSTUB)
-        if (likely(!rv->debug_mode))
-#endif
-            /* macro operation fusion */
-            match_pattern(rv, next);
-
 #if !RV32_HAS(JIT)
         /* insert the block into block map */
         block_insert(&rv->block_map, next);
 #else
         /* insert the block into block cache */
-        block_t *delete_target = cache_put(rv->block_cache, rv->PC, &(*next));
+        block_t *delete_target =
+            cache_put(rv->block_cache, reduce_vaddr(rv, rv->PC), &(*next));
         if (delete_target) {
             if (prev == delete_target)
                 prev = NULL;
@@ -946,8 +950,11 @@ static block_t *block_find_or_translate(riscv_t *rv)
             /* correctly remove deleted block from its chained block */
             rv_insn_t *taken = delete_target->ir_tail->branch_taken,
                       *untaken = delete_target->ir_tail->branch_untaken;
-            if (taken && taken->pc != delete_target->pc_start) {
-                block_t *target = cache_get(rv->block_cache, taken->pc, false);
+            if (taken && reduce_vaddr(rv, taken->pc) !=
+                             reduce_vaddr(rv, delete_target->pc_start)) {
+                block_t *target = cache_get(rv->block_cache,
+                                            reduce_vaddr(rv, taken->pc), false);
+                assert(target);
                 bool flag = false;
                 list_for_each_entry_safe (entry, safe, &target->list, list) {
                     if (entry->block == delete_target) {
@@ -958,9 +965,10 @@ static block_t *block_find_or_translate(riscv_t *rv)
                 }
                 assert(flag);
             }
-            if (untaken && untaken->pc != delete_target->pc_start) {
-                block_t *target =
-                    cache_get(rv->block_cache, untaken->pc, false);
+            if (untaken && reduce_vaddr(rv, untaken->pc) !=
+                               reduce_vaddr(rv, delete_target->pc_start)) {
+                block_t *target = cache_get(
+                    rv->block_cache, reduce_vaddr(rv, untaken->pc), false);
                 assert(target);
                 bool flag = false;
                 list_for_each_entry_safe (entry, safe, &target->list, list) {
@@ -1107,6 +1115,58 @@ static bool rv_has_plic_trap(riscv_t *rv)
             (rv->csr_sip & rv->csr_sie));
 }
 
+#define get_ppn_and_offset(ppn, offset)                       \
+    uint32_t ppn;                                             \
+    uint32_t offset;                                          \
+    do {                                                      \
+        ppn = *pte >> (RV_PG_SHIFT - 2) << RV_PG_SHIFT;       \
+        offset = level == 1 ? addr & MASK((RV_PG_SHIFT + 10)) \
+                            : addr & MASK(RV_PG_SHIFT);       \
+    } while (0)
+
+static uint32_t *mmu_walk(riscv_t *rv,
+                          const uint32_t addr,
+                          uint32_t *level,
+                          uint32_t **pte_ref);
+
+/* Verify the PTE and generate corresponding faults if needed
+ * @op: the operation
+ * @rv: RISC-V emulator
+ * @pte: to be verified pte
+ * @addr: the corresponding virtual address to cause fault
+ * @return: false if a any fault is generated which caused by violating the
+ * access permission else true
+ */
+/* FIXME: handle access fault, addr out of range check */
+#define MMU_FAULT_CHECK(op, rv, pte, addr, access_bits) \
+    mmu_##op##_fault_check(rv, pte, addr, access_bits)
+#define MMU_FAULT_CHECK_IMPL(op, pgfault)                                   \
+    static bool mmu_##op##_fault_check(riscv_t *rv, uint32_t *pte,          \
+                                       uint32_t addr, uint32_t access_bits) \
+    {                                                                       \
+        if (!(pte && (*pte & access_bits))) {                               \
+            if (satp_cnt >= 2)                                              \
+                rv->is_trapped = true;                                      \
+            rv_trap_##pgfault(rv, addr);                                    \
+            return false;                                                   \
+        }                                                                   \
+        /* PTE not found, map it in handler */                              \
+        if (!pte) {                                                         \
+            if (satp_cnt >= 2)                                              \
+                rv->is_trapped = true;                                      \
+            rv_trap_##pgfault(rv, addr);                                    \
+            return false;                                                   \
+        }                                                                   \
+        /* valid PTE */                                                     \
+        return true;                                                        \
+    }
+
+MMU_FAULT_CHECK_IMPL(ifetch, pagefault_insn)
+MMU_FAULT_CHECK_IMPL(read, pagefault_load)
+MMU_FAULT_CHECK_IMPL(write, pagefault_store)
+
+// #pragma GCC push_options
+// #pragma GCC optimize("O0")
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1124,6 +1184,20 @@ void rv_step(void *arg)
     /* loop until hitting the cycle target */
     while (rv->csr_cycle < cycles_target && !rv->halt) {
         /* check for any interrupt after every block emulation */
+
+        if (!rv->csr_satp) {
+            vaddr_diff = 0;
+        } else if (rv->csr_satp != last_satp) {
+            uint32_t addr = rv->PC, level;
+            uint32_t *pte_ref;
+            uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+            {
+                uint32_t *pte = pte_ref;
+                get_ppn_and_offset(ppn, offset);
+                vaddr_diff = rv->PC - (ppn | offset);
+                last_satp = rv->csr_satp;
+            }
+        }
 
         if (peripheral_update_ctr-- == 0) {
             peripheral_update_ctr = 64;
@@ -1185,7 +1259,7 @@ void rv_step(void *arg)
          * the previous block.
          */
 
-if (prev) {
+        if (prev) {
             rv_insn_t *last_ir = prev->ir_tail;
             /* chain block */
             if (!insn_is_unconditional_branch(last_ir->opcode)) {
@@ -1223,33 +1297,80 @@ if (prev) {
 #if RV32_HAS(JIT)
 #if RV32_HAS(T2C)
         /* executed through the tier-2 JIT compiler */
-        if (block->hot2) {
-            ((exec_t2c_func_t) block->func)(rv);
-            prev = NULL;
-            continue;
-        } /* check if invoking times of t1 generated code exceed threshold */
-        else if (!block->compiled && block->n_invoke >= THRESHOLD) {
-            block->compiled = true;
-            queue_entry_t *entry = malloc(sizeof(queue_entry_t));
-            entry->block = block;
-            pthread_mutex_lock(&rv->wait_queue_lock);
-            list_add(&entry->list, &rv->wait_queue);
-            pthread_mutex_unlock(&rv->wait_queue_lock);
-        }
 #endif
         /* executed through the tier-1 JIT compiler */
         struct jit_state *state = rv->jit_state;
         if (block->hot) {
+            uint64_t jit_addr = block->offset;
             block->n_invoke++;
+        rerun_hot:
             ((exec_block_func_t) state->buf)(
-                rv, (uintptr_t) (state->buf + block->offset));
+                rv, (uintptr_t) (state->buf + jit_addr));
+            if (rv->mmu_ret) {
+                uint32_t addr = rv->mmu_addr;
+                if (rv->csr_satp) {
+                    uint32_t level;
+                    uint32_t *pte_ref;
+                    uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+                    bool ok = rv->mmu_type
+                                  ? MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W)
+                                  : MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
+                    if (unlikely(!ok)) {
+                        pte = mmu_walk(rv, addr, &level, &pte_ref);
+                        pte = pte_ref;
+                    }
+                    {
+                        get_ppn_and_offset(ppn, offset);
+                        const uint32_t addr = ppn | offset;
+                        const vm_attr_t *attr = PRIV(rv);
+                        if (addr > attr->mem->mem_size) {
+                            assert(NULL);
+                        } else {
+                            rv->mmu_addr = addr;
+                        }
+                    }
+                }
+                jit_addr = rv->mmu_ret;
+                rv->mmu_ret = 0;
+                goto rerun_hot;
+            }
             prev = NULL;
             continue;
         } /* check if the execution path is potential hotspot */
-        if (block->translatable && runtime_profiler(rv, block)) {
+        if (0 && block->translatable && runtime_profiler(rv, block)) {
             jit_translate(rv, block);
+            uint64_t jit_addr = block->offset;
+        rerun:
             ((exec_block_func_t) state->buf)(
-                rv, (uintptr_t) (state->buf + block->offset));
+                rv, (uintptr_t) (state->buf + jit_addr));
+            if (rv->mmu_ret) {
+                uint32_t addr = rv->mmu_addr;
+                if (rv->csr_satp) {
+                    uint32_t level;
+                    uint32_t *pte_ref;
+                    uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+                    bool ok = rv->mmu_type
+                                  ? MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W)
+                                  : MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
+                    if (unlikely(!ok)) {
+                        pte = mmu_walk(rv, addr, &level, &pte_ref);
+                        pte = pte_ref;
+                    }
+                    {
+                        get_ppn_and_offset(ppn, offset);
+                        const uint32_t addr = ppn | offset;
+                        const vm_attr_t *attr = PRIV(rv);
+                        if (addr > attr->mem->mem_size) {
+                            assert(NULL);
+                        } else {
+                            rv->mmu_addr = addr;
+                        }
+                    }
+                }
+                jit_addr = rv->mmu_ret;
+                rv->mmu_ret = 0;
+                goto rerun;
+            }
             prev = NULL;
             continue;
         }
@@ -1278,6 +1399,7 @@ if (prev) {
     }
 #endif
 }
+// #pragma GCC pop_options
 
 #if RV32_HAS(SYSTEM)
 static void trap_handler(riscv_t *rv)
@@ -1363,51 +1485,6 @@ static uint32_t *mmu_walk(riscv_t *rv,
 
     return NULL;
 }
-
-/* Verify the PTE and generate corresponding faults if needed
- * @op: the operation
- * @rv: RISC-V emulator
- * @pte: to be verified pte
- * @addr: the corresponding virtual address to cause fault
- * @return: false if a any fault is generated which caused by violating the
- * access permission else true
- */
-/* FIXME: handle access fault, addr out of range check */
-#define MMU_FAULT_CHECK(op, rv, pte, addr, access_bits) \
-    mmu_##op##_fault_check(rv, pte, addr, access_bits)
-#define MMU_FAULT_CHECK_IMPL(op, pgfault)                                   \
-    static bool mmu_##op##_fault_check(riscv_t *rv, uint32_t *pte,          \
-                                       uint32_t addr, uint32_t access_bits) \
-    {                                                                       \
-        if (!(pte && (*pte & access_bits))) {                               \
-            if (satp_cnt >= 2)                                              \
-                rv->is_trapped = true;                                      \
-            rv_trap_##pgfault(rv, addr);                                    \
-            return false;                                                   \
-        }                                                                   \
-        /* PTE not found, map it in handler */                              \
-        if (!pte) {                                                         \
-            if (satp_cnt >= 2)                                              \
-                rv->is_trapped = true;                                      \
-            rv_trap_##pgfault(rv, addr);                                    \
-            return false;                                                   \
-        }                                                                   \
-        /* valid PTE */                                                     \
-        return true;                                                        \
-    }
-
-MMU_FAULT_CHECK_IMPL(ifetch, pagefault_insn)
-MMU_FAULT_CHECK_IMPL(read, pagefault_load)
-MMU_FAULT_CHECK_IMPL(write, pagefault_store)
-
-#define get_ppn_and_offset(ppn, offset)                       \
-    uint32_t ppn;                                             \
-    uint32_t offset;                                          \
-    do {                                                      \
-        ppn = *pte >> (RV_PG_SHIFT - 2) << RV_PG_SHIFT;       \
-        offset = level == 1 ? addr & MASK((RV_PG_SHIFT + 10)) \
-                            : addr & MASK(RV_PG_SHIFT);       \
-    } while (0)
 
 uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
 {

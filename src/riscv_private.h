@@ -179,6 +179,9 @@ struct riscv_internal {
 #else
     struct cache *block_cache;
     struct mpool *chain_entry_mp;
+    riscv_word_t mmu_type; /* 0: read, 1: write */
+    riscv_word_t mmu_addr;
+    uintptr_t mmu_ret;
 #if RV32_HAS(T2C)
     struct list_head wait_queue;
     pthread_mutex_t wait_queue_lock;

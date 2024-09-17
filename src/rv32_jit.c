@@ -155,64 +155,158 @@ GEN(bgeu, {
 GEN(lb, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 0);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
     vm_reg[1] = map_vm_reg(state, ir->rd);
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[1], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[1], temp_reg);
     emit_load_sext(state, S8, temp_reg, vm_reg[1], 0);
 })
 GEN(lh, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 0);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
     vm_reg[1] = map_vm_reg(state, ir->rd);
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[1], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[1], temp_reg);
     emit_load_sext(state, S16, temp_reg, vm_reg[1], 0);
 })
 GEN(lw, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 0);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
     vm_reg[1] = map_vm_reg(state, ir->rd);
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[1], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[1], temp_reg);
     emit_load(state, S32, temp_reg, vm_reg[1], 0);
 })
 GEN(lbu, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 0);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
     vm_reg[1] = map_vm_reg(state, ir->rd);
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[1], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[1], temp_reg);
     emit_load(state, S8, temp_reg, vm_reg[1], 0);
 })
 GEN(lhu, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 0);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
     vm_reg[1] = map_vm_reg(state, ir->rd);
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[1], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[1], temp_reg);
     emit_load(state, S16, temp_reg, vm_reg[1], 0);
 })
 GEN(sb, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 1);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[0], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    set_dirty(vm_reg[0], false);
+    unmap_host_reg(vm_reg[0]);
     vm_reg[1] = ra_load(state, ir->rs2);
     emit_store(state, S8, vm_reg[1], temp_reg, 0);
 })
 GEN(sh, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 1);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[0], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    set_dirty(vm_reg[0], false);
+    unmap_host_reg(vm_reg[0]);
     vm_reg[1] = ra_load(state, ir->rs2);
     emit_store(state, S16, vm_reg[1], temp_reg, 0);
 })
 GEN(sw, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
+    emit_load_imm(state, temp_reg, (intptr_t) (ir->imm));
     emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    store_back(state);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, temp_reg, 1);
+    emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_type));
+    emit_load_imm(state, temp_reg, state->offset + 0x13);
+    emit_store(state, S64, temp_reg, parameter_reg[0], offsetof(riscv_t, mmu_ret));
+    emit_exit(state);
+    reset_reg();
+    emit_load(state, S32, parameter_reg[0], temp_reg, offsetof(riscv_t, mmu_addr));
+    emit_load_imm(state, vm_reg[0], (intptr_t) m->mem_base);
+    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+    set_dirty(vm_reg[0], false);
+    unmap_host_reg(vm_reg[0]);
     vm_reg[1] = ra_load(state, ir->rs2);
     emit_store(state, S32, vm_reg[1], temp_reg, 0);
 })

@@ -194,6 +194,7 @@ enum operand_size {
     S8,
     S16,
     S32,
+    S64,
 };
 
 #if defined(__x86_64__)
@@ -247,6 +248,12 @@ static struct host_reg register_map[] = {
     {R26, -1, 0, 0},
 };
 #endif
+
+
+static uint32_t reduce_vaddr(uint32_t vaddr)
+{
+    return vaddr > 0x1fffffff ? vaddr - 0xc0000000 : vaddr;
+}
 
 static const int n_host_regs =
     ARRAYS_SIZE(register_map); /* the number of avavliable host register */
@@ -836,8 +843,9 @@ static inline void emit_load(struct jit_state *state,
         /* movzx */
         emit1(state, 0x0f);
         emit1(state, size == S8 ? 0xb6 : 0xb7);
-    } else if (size == S32) {
-        /* mov */
+    } else if (size == S32 || size == S64) {
+        if (size == S64)
+            emit1(state, 0x48); /* mov */
         emit1(state, 0x8b);
     } else
         __UNREACHABLE;
@@ -941,6 +949,8 @@ static inline void emit_store(struct jit_state *state,
         emit1(state, 0x66); /* 16-bit override */
     if (src & 8 || dst & 8 || size == S8)
         emit_rex(state, 0, !!(src & 8), 0, !!(dst & 8));
+    if (size == S64)
+        emit1(state, 0x48);
     emit1(state, size == S8 ? 0x88 : 0x89);
     emit_modrm_and_displacement(state, src, dst, offset);
 #elif defined(__aarch64__)
@@ -1579,6 +1589,17 @@ end_pick_reg:
     return idx;
 }
 
+static inline void unmap_host_reg(int idx)
+{
+    for (int i = 0; i < n_host_regs; i++) {
+        if (register_map[i].reg_idx == idx) {
+            register_map[i].vm_reg_idx = -1;
+            return;
+        }
+    }
+    assert(NULL);
+}
+
 /* Unmap the vm register to the host register. */
 static inline void unmap_vm_reg(int idx)
 {
@@ -1894,19 +1915,20 @@ static void resolve_jumps(struct jit_state *state)
         int target_loc;
         if (jump.target_offset != 0)
             target_loc = jump.target_offset;
-        else if (jump.target_pc == TARGET_PC_EXIT)
+        else if (reduce_vaddr(jump.target_pc) == TARGET_PC_EXIT)
             target_loc = state->exit_loc;
 #if defined(__x86_64__)
-        else if (jump.target_pc == TARGET_PC_RETPOLINE)
+        else if (reduce_vaddr(jump.target_pc) == TARGET_PC_RETPOLINE)
             target_loc = state->retpoline_loc;
 #elif defined(__aarch64__)
-        else if (jump.target_pc == TARGET_PC_ENTER)
+        else if (reduce_vaddr(jump.target_pc) == TARGET_PC_ENTER)
             target_loc = state->entry_loc;
 #endif
         else {
             target_loc = jump.offset_loc + sizeof(uint32_t);
             for (int i = 0; i < state->n_blocks; i++) {
-                if (jump.target_pc == state->offset_map[i].pc) {
+                if (reduce_vaddr(jump.target_pc) ==
+                    reduce_vaddr(state->offset_map[i].pc)) {
                     target_loc = state->offset_map[i].offset;
                     break;
                 }
@@ -1929,24 +1951,26 @@ static void translate_chained_block(struct jit_state *state,
                                     riscv_t *rv,
                                     block_t *block)
 {
-    if (set_has(&state->set, block->pc_start))
+    if (set_has(&state->set, reduce_vaddr(block->pc_start)))
         return;
 
-    set_add(&state->set, block->pc_start);
-    offset_map_insert(state, block->pc_start);
+    set_add(&state->set, reduce_vaddr(block->pc_start));
+    offset_map_insert(state, reduce_vaddr(block->pc_start));
     translate(state, rv, block);
     if (unlikely(should_flush))
         return;
     rv_insn_t *ir = block->ir_tail;
-    if (ir->branch_untaken && !set_has(&state->set, ir->branch_untaken->pc)) {
-        block_t *block1 =
-            cache_get(rv->block_cache, ir->branch_untaken->pc, false);
+    if (ir->branch_untaken &&
+        !set_has(&state->set, reduce_vaddr(ir->branch_untaken->pc))) {
+        block_t *block1 = cache_get(
+            rv->block_cache, reduce_vaddr(ir->branch_untaken->pc), false);
         if (block1->translatable)
             translate_chained_block(state, rv, block1);
     }
-    if (ir->branch_taken && !set_has(&state->set, ir->branch_taken->pc)) {
-        block_t *block1 =
-            cache_get(rv->block_cache, ir->branch_taken->pc, false);
+    if (ir->branch_taken &&
+        !set_has(&state->set, reduce_vaddr(ir->branch_taken->pc))) {
+        block_t *block1 = cache_get(rv->block_cache,
+                                    reduce_vaddr(ir->branch_taken->pc), false);
         if (block1->translatable)
             translate_chained_block(state, rv, block1);
     }
@@ -1960,9 +1984,9 @@ static void translate_chained_block(struct jit_state *state,
                 max_idx = i;
         }
         if (bt->PC[max_idx] && bt->times[max_idx] >= IN_JUMP_THRESHOLD &&
-            !set_has(&state->set, bt->PC[max_idx])) {
-            block_t *block1 =
-                cache_get(rv->block_cache, bt->PC[max_idx], false);
+            !set_has(&state->set, reduce_vaddr(bt->PC[max_idx]))) {
+            block_t *block1 = cache_get(rv->block_cache,
+                                        reduce_vaddr(bt->PC[max_idx]), false);
             if (block1 && block1->translatable)
                 translate_chained_block(state, rv, block1);
         }
@@ -1972,9 +1996,10 @@ static void translate_chained_block(struct jit_state *state,
 void jit_translate(riscv_t *rv, block_t *block)
 {
     struct jit_state *state = rv->jit_state;
-    if (set_has(&state->set, block->pc_start)) {
+    if (set_has(&state->set, reduce_vaddr(block->pc_start))) {
         for (int i = 0; i < state->n_blocks; i++) {
-            if (block->pc_start == state->offset_map[i].pc) {
+            if (reduce_vaddr(block->pc_start) ==
+                reduce_vaddr(state->offset_map[i].pc)) {
                 block->offset = state->offset_map[i].offset;
                 block->hot = true;
                 return;

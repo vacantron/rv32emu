@@ -232,6 +232,7 @@ RVOP(
 #else
 #define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                               \
     block_t *block = cache_get(rv->block_cache, PC, true);                    \
+    if (!rv->is_trapped) {                                                    \
     if (block) {                                                              \
         for (int i = 0; i < HISTORY_SIZE; i++) {                              \
             if (ir->branch_table->PC[i] == PC) {                              \
@@ -256,6 +257,7 @@ RVOP(
         if (cache_hot(rv->block_cache, PC))                                   \
             goto end_op;                                                      \
         MUST_TAIL return block->ir_head->impl(rv, block->ir_head, cycle, PC); \
+    }                                                                         \
     }
 #endif
 
