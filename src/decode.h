@@ -49,7 +49,7 @@ enum op_field {
      * cause invalid memory unusually during system
      * emulation
      */                                                \
-    IIF(RV32_HAS(SYSTEM))(                             \
+    IIF(0)(                             \
         _(lb, 1, 4, 1, ENC(rs1, rd))                   \
         _(lh, 1, 4, 1, ENC(rs1, rd))                   \
         _(lw, 1, 4, 1, ENC(rs1, rd))                   \
