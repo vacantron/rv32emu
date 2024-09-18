@@ -937,7 +937,34 @@ static block_t *block_find_or_translate(riscv_t *rv)
         block_insert(&rv->block_map, next);
 #else
         /* insert the block into block cache */
-        cache_put(rv->block_cache, rv->PC, &(*next));
+        block_t *delete_target = cache_put(rv->block_cache, rv->PC, &(*next));
+        if (delete_target) {
+            if (prev == delete_target)
+                prev = NULL;
+            chain_entry_t *entry, *safe;
+            /* correctly remove deleted block from the block chained to it */
+            list_for_each_entry_safe (entry, safe, &delete_target->list, list) {
+                if (entry->block == delete_target)
+                    continue;
+                rv_insn_t *target = entry->block->ir_tail;
+                if (target->branch_taken == delete_target->ir_head) {
+                    /* since no block chaining existing, do nothing */
+                } else if (target->branch_untaken == delete_target->ir_head) {
+                    /* since no block chaining existing, do nothing */
+                }
+                mpool_free(rv->chain_entry_mp, entry);
+            }
+            /* free deleted block */
+            uint32_t idx;
+            rv_insn_t *ir, *next;
+            for (idx = 0, ir = delete_target->ir_head;
+                 idx < delete_target->n_insn; idx++, ir = next) {
+                free(ir->fuse);
+                next = ir->next;
+                mpool_free(rv->block_ir_mp, ir);
+            }
+            mpool_free(rv->block_mp, delete_target);
+        }
 #endif
     }
 
