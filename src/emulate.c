@@ -927,11 +927,6 @@ static block_t *block_find_or_translate(riscv_t *rv)
         block_translate(rv, next);
 
         optimize_constant(rv, next);
-#if RV32_HAS(GDBSTUB)
-        if (likely(!rv->debug_mode))
-#endif
-            /* macro operation fusion */
-            match_pattern(rv, next);
 
 #if !RV32_HAS(JIT)
         /* insert the block into block map */
