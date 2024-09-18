@@ -923,6 +923,8 @@ static block_t *block_find_or_translate(riscv_t *rv)
             block_map_clear(rv);
             prev = NULL;
         }
+#else
+    /* FIXME: clear cache here! */
 #endif
         /* allocate a new block */
         next = block_alloc(rv);
