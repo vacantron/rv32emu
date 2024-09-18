@@ -935,62 +935,7 @@ static block_t *block_find_or_translate(riscv_t *rv)
         block_insert(&rv->block_map, next);
 #else
         /* insert the block into block cache */
-        block_t *delete_target = cache_put(rv->block_cache, rv->PC, &(*next));
-        if (delete_target) {
-            if (prev == delete_target)
-                prev = NULL;
-            chain_entry_t *entry, *safe;
-            /* correctly remove deleted block from its chained block */
-            rv_insn_t *taken = delete_target->ir_tail->branch_taken,
-                      *untaken = delete_target->ir_tail->branch_untaken;
-            if (taken && taken->pc != delete_target->pc_start) {
-                block_t *target = cache_get(rv->block_cache, taken->pc, false);
-                bool flag = false;
-                list_for_each_entry_safe (entry, safe, &target->list, list) {
-                    if (entry->block == delete_target) {
-                        list_del_init(&entry->list);
-                        mpool_free(rv->chain_entry_mp, entry);
-                        flag = true;
-                    }
-                }
-                assert(flag);
-            }
-            if (untaken && untaken->pc != delete_target->pc_start) {
-                block_t *target =
-                    cache_get(rv->block_cache, untaken->pc, false);
-                assert(target);
-                bool flag = false;
-                list_for_each_entry_safe (entry, safe, &target->list, list) {
-                    if (entry->block == delete_target) {
-                        list_del_init(&entry->list);
-                        mpool_free(rv->chain_entry_mp, entry);
-                        flag = true;
-                    }
-                }
-                assert(flag);
-            }
-            /* correctly remove deleted block from the block chained to it */
-            list_for_each_entry_safe (entry, safe, &delete_target->list, list) {
-                if (entry->block == delete_target)
-                    continue;
-                rv_insn_t *target = entry->block->ir_tail;
-                if (target->branch_taken == delete_target->ir_head)
-                    target->branch_taken = NULL;
-                else if (target->branch_untaken == delete_target->ir_head)
-                    target->branch_untaken = NULL;
-                mpool_free(rv->chain_entry_mp, entry);
-            }
-            /* free deleted block */
-            uint32_t idx;
-            rv_insn_t *ir, *next;
-            for (idx = 0, ir = delete_target->ir_head;
-                 idx < delete_target->n_insn; idx++, ir = next) {
-                free(ir->fuse);
-                next = ir->next;
-                mpool_free(rv->block_ir_mp, ir);
-            }
-            mpool_free(rv->block_mp, delete_target);
-        }
+        cache_put(rv->block_cache, rv->PC, &(*next));
 #endif
     }
 

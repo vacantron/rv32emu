@@ -175,6 +175,7 @@ RVOP(
 #endif
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
+            assert(NULL);
 #if RV32_HAS(JIT)
             cache_get(rv->block_cache, PC, true);
             if (!set_add(&pc_set, PC))
@@ -314,14 +315,7 @@ RVOP(
         struct rv_insn *untaken = ir->branch_untaken;              \
         if (!untaken)                                              \
             goto nextop;                                           \
-        IIF(RV32_HAS(JIT))                                         \
-        ({                                                         \
-            cache_get(rv->block_cache, PC + 4, true);              \
-            if (!set_add(&pc_set, PC + 4))                         \
-                has_loops = true;                                  \
-            if (cache_hot(rv->block_cache, PC + 4))                \
-                goto nextop;                                       \
-        }, );                                                      \
+        assert(NULL);                                              \
         PC += 4;                                                   \
         last_pc = PC;                                              \
 	goto end_op;\
@@ -333,17 +327,8 @@ RVOP(
     (, RV_EXC_MISALIGN_HANDLER(pc, insn, false, 0););              \
     struct rv_insn *taken = ir->branch_taken;                      \
     if (taken) {                                                   \
-        IIF(RV32_HAS(JIT))                                         \
-        ({                                                         \
-            cache_get(rv->block_cache, PC, true);                  \
-            if (!set_add(&pc_set, PC))                             \
-                has_loops = true;                                  \
-            if (cache_hot(rv->block_cache, PC))                    \
-                goto end_op;                                       \
-        }, );                                                      \
-	if(rv->PC == 0xc0002388){\
-	}\
         last_pc = PC;                                              \
+        assert(NULL);                                              \
     }                                                              \
     goto end_op;
 
