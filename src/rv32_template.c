@@ -288,7 +288,6 @@ RVOP(
 #if !RV32_HAS(EXT_C)
         RV_EXC_MISALIGN_HANDLER(pc, insn, false, 0);
 #endif
-        LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE();
         goto end_op;
     },
     GEN({
