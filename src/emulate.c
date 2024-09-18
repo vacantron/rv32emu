@@ -478,6 +478,7 @@ static bool has_loops = false;
 static void emu_update_uart_interrupts(riscv_t *rv);
 static uint32_t peripheral_update_ctr = 64;
 
+static void rv_process_trap(riscv_t *);
 /* Interpreter-based execution path */
 #define RVOP(inst, code, asm)                                         \
     static bool do_##inst(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, \
@@ -493,6 +494,7 @@ static uint32_t peripheral_update_ctr = 64;
             goto end_op;                                              \
         }                                                             \
         const rv_insn_t *next = ir->next;                             \
+        rv_process_trap(rv);                                          \
         MUST_TAIL return next->impl(rv, next, cycle, PC);             \
     end_op:                                                           \
         rv->csr_cycle = cycle;                                        \
@@ -1102,6 +1104,43 @@ static bool rv_has_plic_trap(riscv_t *rv)
             (rv->csr_sip & rv->csr_sie));
 }
 
+static void rv_process_trap(riscv_t *rv)
+{
+    /* now time */
+    struct timeval tv;
+    vm_attr_t *attr = PRIV(rv);
+
+    get_time_now(&tv);
+    uint64_t t = (uint64_t) (tv.tv_sec * 1e6) + (uint32_t) tv.tv_usec;
+
+    if (t > attr->timer) {
+        rv->csr_sip |= RV_INT_STI;
+    } else {
+        rv->csr_sip &= ~RV_INT_STI;
+    }
+
+    if (rv_has_plic_trap(rv)) {
+        if (satp_cnt >= 2) {
+            rv->is_trapped = true;
+        }
+        uint32_t intr_applicable = rv->csr_sip & rv->csr_sie;
+        uint8_t intr_idx = ilog2(intr_applicable);
+        switch (intr_idx) {
+        case 1:
+            rv_trap_supervisor_sw_intr(rv, 0);
+            break;
+        case 5:
+            rv_trap_supervisor_timer_intr(rv, 0);
+            break;
+        case 9:
+            rv_trap_supervisor_external_intr(rv, 0);
+            break;
+        default:
+            break;
+        }
+    }
+}
+
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1112,9 +1151,6 @@ void rv_step(void *arg)
 
     /* find or translate a block for starting PC */
     const uint64_t cycles_target = rv->csr_cycle + cycles;
-
-    /* now time */
-    struct timeval tv;
 
     /* loop until hitting the cycle target */
     while (rv->csr_cycle < cycles_target && !rv->halt) {
@@ -1128,35 +1164,7 @@ void rv_step(void *arg)
                 emu_update_uart_interrupts(rv);
         }
 
-        get_time_now(&tv);
-        uint64_t t = (uint64_t) (tv.tv_sec * 1e6) + (uint32_t) tv.tv_usec;
-
-        if (t > attr->timer) {
-            rv->csr_sip |= RV_INT_STI;
-        } else {
-            rv->csr_sip &= ~RV_INT_STI;
-        }
-
-        if (rv_has_plic_trap(rv)) {
-            if (satp_cnt >= 2) {
-                rv->is_trapped = true;
-            }
-            uint32_t intr_applicable = rv->csr_sip & rv->csr_sie;
-            uint8_t intr_idx = ilog2(intr_applicable);
-            switch (intr_idx) {
-            case 1:
-                rv_trap_supervisor_sw_intr(rv, 0);
-                break;
-            case 5:
-                rv_trap_supervisor_timer_intr(rv, 0);
-                break;
-            case 9:
-                rv_trap_supervisor_external_intr(rv, 0);
-                break;
-            default:
-                break;
-            }
-        }
+        rv_process_trap(rv);
 
         /* lookup the next block in block map or translate a new block,
          * and move onto the next block.

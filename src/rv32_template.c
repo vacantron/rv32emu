@@ -183,9 +183,6 @@ RVOP(
                 goto end_op;
 #endif
             last_pc = PC;
-	    if(!rv->is_trapped){
-		    MUST_TAIL return taken->impl(rv, taken, cycle, PC);
-	    }
         }
         goto end_op;
     },
@@ -327,9 +324,6 @@ RVOP(
         }, );                                                      \
         PC += 4;                                                   \
         last_pc = PC;                                              \
-	if(!rv->is_trapped) {\
-		MUST_TAIL return untaken->impl(rv, untaken, cycle, PC);    \
-	}\
 	goto end_op;\
     }                                                          \
     is_branch_taken = true;                                        \
@@ -350,9 +344,6 @@ RVOP(
 	if(rv->PC == 0xc0002388){\
 	}\
         last_pc = PC;                                              \
-	if(!rv->is_trapped) {\
-        	MUST_TAIL return taken->impl(rv, taken, cycle, PC);        \
-	}\
     }                                                              \
     goto end_op;
 

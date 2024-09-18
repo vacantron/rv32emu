@@ -45,29 +45,16 @@ enum op_field {
     _(bge, 1, 4, 1, ENC(rs1, rs2))                     \
     _(bltu, 1, 4, 1, ENC(rs1, rs2))                    \
     _(bgeu, 1, 4, 1, ENC(rs1, rs2))                    \
-    /* FIXME: memory instructions with can_branch=0
-     * cause invalid memory unusually during system
-     * emulation
-     */                                                \
-    IIF(RV32_HAS(SYSTEM))(                             \
-        _(lb, 1, 4, 1, ENC(rs1, rd))                   \
-        _(lh, 1, 4, 1, ENC(rs1, rd))                   \
-        _(lw, 1, 4, 1, ENC(rs1, rd))                   \
-        _(lbu, 1, 4, 1, ENC(rs1, rd))                  \
-        _(lhu, 1, 4, 1, ENC(rs1, rd))                  \
-        _(sb, 1, 4, 1, ENC(rs1, rs2))                  \
-        _(sh, 1, 4, 1, ENC(rs1, rs2))                  \
-        _(sw, 1, 4, 1, ENC(rs1, rs2))                  \
-    ,                                                  \
-        _(lb, 0, 4, 1, ENC(rs1, rd))                   \
-        _(lh, 0, 4, 1, ENC(rs1, rd))                   \
-        _(lw, 0, 4, 1, ENC(rs1, rd))                   \
-        _(lbu, 0, 4, 1, ENC(rs1, rd))                  \
-        _(lhu, 0, 4, 1, ENC(rs1, rd))                  \
-        _(sb, 0, 4, 1, ENC(rs1, rs2))                  \
-        _(sh, 0, 4, 1, ENC(rs1, rs2))                  \
-        _(sw, 0, 4, 1, ENC(rs1, rs2))                  \
-    )                                                  \
+                                                       \
+    _(lb, 0, 4, 1, ENC(rs1, rd))                       \
+    _(lh, 0, 4, 1, ENC(rs1, rd))                       \
+    _(lw, 0, 4, 1, ENC(rs1, rd))                       \
+    _(lbu, 0, 4, 1, ENC(rs1, rd))                      \
+    _(lhu, 0, 4, 1, ENC(rs1, rd))                      \
+    _(sb, 0, 4, 1, ENC(rs1, rs2))                      \
+    _(sh, 0, 4, 1, ENC(rs1, rs2))                      \
+    _(sw, 0, 4, 1, ENC(rs1, rs2))                      \
+                                                       \
     _(addi, 0, 4, 1, ENC(rs1, rd))                     \
     _(slti, 0, 4, 1, ENC(rs1, rd))                     \
     _(sltiu, 0, 4, 1, ENC(rs1, rd))                    \
