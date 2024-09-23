@@ -90,6 +90,7 @@ typedef struct block {
     bool
         translatable; /**< Determine the block has RV32AF insturctions or not */
     bool has_loops;   /**< Determine the block has loop or not */
+    uint32_t satp;
 #if RV32_HAS(T2C)
     bool compiled; /**< The T2C request is enqueued or not */
 #endif

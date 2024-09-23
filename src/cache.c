@@ -159,7 +159,7 @@ free_lists:
     return NULL;
 }
 
-void *cache_get(const cache_t *cache, uint32_t key, bool update)
+void *cache_get(const cache_t *cache, uint32_t key, uint32_t satp, bool update)
 {
     if (!cache->capacity ||
         hlist_empty(&cache->map->ht_list_head[cache_hash(key)]))
@@ -177,7 +177,7 @@ void *cache_get(const cache_t *cache, uint32_t key, bool update)
         if (entry->key == key)
             break;
     }
-    if (!entry || entry->key != key)
+    if (!entry || entry->key != key || ((block_t *) entry->value)->satp != satp)
         return NULL;
 
     /* When the frequency of use for a specific block exceeds the predetermined
@@ -194,28 +194,71 @@ void *cache_get(const cache_t *cache, uint32_t key, bool update)
     return entry->value;
 }
 
-void *cache_put(cache_t *cache, uint32_t key, void *value)
+void *cache_put(riscv_t *rv, cache_t *cache, uint32_t key, uint32_t satp, void *value)
 {
     void *delete_value = NULL;
     assert(cache->list_size <= cache->capacity);
     /* check the cache is full or not before adding a new entry */
     if (cache->list_size == cache->capacity) {
+        int max_idx = -1, max_val = -1;
         for (int i = 0; i < THRESHOLD; i++) {
-            if (list_empty(cache->lists[i]))
-                continue;
-            lfu_entry_t *delete_target =
-                list_last_entry(cache->lists[i], lfu_entry_t, list);
-            list_del_init(&delete_target->list);
-            hlist_del_init(&delete_target->ht_list);
-            delete_value = delete_target->value;
-            cache->list_size--;
-            mpool_free(cache_mp, delete_target);
-            break;
+            int tmp = 0;
+            lfu_entry_t *del, *safe;
+            list_for_each_entry_safe (del, safe, cache->lists[i], list) {
+                tmp++;
+            }
+            if (tmp >= max_val) {
+                max_val = tmp;
+                max_idx = i;
+            }
+        }
+        assert(max_idx < THRESHOLD && max_idx >= 0);
+
+        if (list_empty(cache->lists[max_idx])) {
+            assert(NULL);
+        } else {
+            lfu_entry_t *del, *safe;
+            list_for_each_entry_safe (del, safe, cache->lists[max_idx], list) {
+                list_del_init(&del->list);
+                hlist_del_init(&del->ht_list);
+                delete_value = del->value;
+                cache->list_size--;
+                mpool_free(cache_mp, del);
+
+                assert(delete_value);
+
+                block_t *del_blk = (block_t *) delete_value;
+                chain_entry_t *entry, *safe;
+                /* correctly remove deleted block from the block chained to
+                 * it */
+                list_for_each_entry_safe (entry, safe, &del_blk->list, list) {
+                    if (entry->block == del_blk)
+                        continue;
+                    rv_insn_t *target = entry->block->ir_tail;
+                    if (target->branch_taken == del_blk->ir_head) {
+                        /* since no block chaining existing, do nothing */
+                    } else if (target->branch_untaken == del_blk->ir_head) {
+                        /* since no block chaining existing, do nothing */
+                    }
+                    mpool_free(rv->chain_entry_mp, entry);
+                }
+                /* free deleted block */
+                uint32_t idx;
+                rv_insn_t *ir, *next;
+                for (idx = 0, ir = del_blk->ir_head; idx < del_blk->n_insn;
+                     idx++, ir = next) {
+                    free(ir->fuse);
+                    next = ir->next;
+                    mpool_free(rv->block_ir_mp, ir);
+                }
+                mpool_free(rv->block_mp, del_blk);
+            }
         }
     }
     lfu_entry_t *new_entry = mpool_alloc(cache_mp);
     new_entry->key = key;
     new_entry->value = value;
+    ((block_t *) new_entry->value)->satp = satp;
     new_entry->frequency = 0;
     list_add(&new_entry->list, cache->lists[new_entry->frequency++]);
     cache->list_size++;
@@ -235,7 +278,7 @@ void cache_free(cache_t *cache)
     free(cache);
 }
 
-uint32_t cache_freq(const struct cache *cache, uint32_t key)
+uint32_t cache_freq(const struct cache *cache, uint32_t key, uint32_t satp)
 {
     if (!cache->capacity ||
         hlist_empty(&cache->map->ht_list_head[cache_hash(key)]))
@@ -249,7 +292,7 @@ uint32_t cache_freq(const struct cache *cache, uint32_t key)
                           ht_list, lfu_entry_t)
 #endif
     {
-        if (entry->key == key)
+        if (entry->key == key && ((block_t *) entry->value)->satp == satp)
             return entry->frequency;
     }
     return 0;

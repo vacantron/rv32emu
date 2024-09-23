@@ -1940,13 +1940,13 @@ static void translate_chained_block(struct jit_state *state,
     rv_insn_t *ir = block->ir_tail;
     if (ir->branch_untaken && !set_has(&state->set, ir->branch_untaken->pc)) {
         block_t *block1 =
-            cache_get(rv->block_cache, ir->branch_untaken->pc, false);
+            cache_get(rv->block_cache, ir->branch_untaken->pc, rv->csr_satp, false);
         if (block1->translatable)
             translate_chained_block(state, rv, block1);
     }
     if (ir->branch_taken && !set_has(&state->set, ir->branch_taken->pc)) {
         block_t *block1 =
-            cache_get(rv->block_cache, ir->branch_taken->pc, false);
+            cache_get(rv->block_cache, ir->branch_taken->pc, rv->csr_satp, false);
         if (block1->translatable)
             translate_chained_block(state, rv, block1);
     }
@@ -1962,7 +1962,7 @@ static void translate_chained_block(struct jit_state *state,
         if (bt->PC[max_idx] && bt->times[max_idx] >= IN_JUMP_THRESHOLD &&
             !set_has(&state->set, bt->PC[max_idx])) {
             block_t *block1 =
-                cache_get(rv->block_cache, bt->PC[max_idx], false);
+                cache_get(rv->block_cache, bt->PC[max_idx], rv->csr_satp, false);
             if (block1 && block1->translatable)
                 translate_chained_block(state, rv, block1);
         }

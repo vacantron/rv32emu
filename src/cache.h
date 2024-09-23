@@ -9,6 +9,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "riscv.h"
+#include "riscv_private.h"
+
 /* Currently, THRESHOLD is set to identify hot spots. Once the using frequency
  * for a block exceeds the THRESHOLD, the tier-1 JIT compiler process is
  * triggered.
@@ -30,7 +33,7 @@ struct cache *cache_create(int size_bits);
  * @update: update frequency or not
  * @return: the specified entry or NULL
  */
-void *cache_get(const struct cache *cache, uint32_t key, bool update);
+void *cache_get(const struct cache *cache, uint32_t key, uint32_t satp, bool update);
 
 /**
  * cache_put - insert a new entry into the cache
@@ -39,7 +42,7 @@ void *cache_get(const struct cache *cache, uint32_t key, bool update);
  * @value: the value of the inserted entry
  * @return: the replaced entry or NULL
  */
-void *cache_put(struct cache *cache, uint32_t key, void *value);
+void *cache_put(riscv_t *rv, struct cache *cache, uint32_t key, uint32_t satp, void *value);
 
 /**
  * cache_free - free a cache
@@ -65,4 +68,4 @@ typedef void (*clear_func_t)(void *);
 void clear_cache_hot(const struct cache *cache, clear_func_t func);
 #endif
 
-uint32_t cache_freq(const struct cache *cache, uint32_t key);
+uint32_t cache_freq(const struct cache *cache, uint32_t key, uint32_t satp);

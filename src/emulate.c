@@ -494,7 +494,7 @@ static void rv_process_trap(riscv_t *);
             goto end_op;                                              \
         }                                                             \
         const rv_insn_t *next = ir->next;                             \
-        rv_process_trap(rv);                                          \
+        /* rv_process_trap(rv); */                                         \
         MUST_TAIL return next->impl(rv, next, cycle, PC);             \
     end_op:                                                           \
         rv->csr_cycle = cycle;                                        \
@@ -905,7 +905,6 @@ static void optimize_constant(riscv_t *rv UNUSED, block_t *block)
         ((constopt_func_t) constopt_table[ir->opcode])(ir, &info);
 }
 
-static block_t *prev = NULL;
 static block_t *block_find_or_translate(riscv_t *rv)
 {
 #if !RV32_HAS(JIT)
@@ -914,17 +913,15 @@ static block_t *block_find_or_translate(riscv_t *rv)
     block_t *next = block_find(map, rv->PC);
 #else
     /* lookup the next block in the block cache */
-    block_t *next = (block_t *) cache_get(rv->block_cache, rv->PC, true);
+    block_t *next = (block_t *) cache_get(rv->block_cache, rv->PC, rv->csr_satp, true);
 #endif
 
-    if (!next) {
+    if (!next || next->satp != rv->csr_satp) {
 #if !RV32_HAS(JIT)
         if (map->size * 1.25 > map->block_capacity) {
             block_map_clear(rv);
             prev = NULL;
         }
-#else
-    /* FIXME: clear cache here! */
 #endif
         /* allocate a new block */
         next = block_alloc(rv);
@@ -937,35 +934,11 @@ static block_t *block_find_or_translate(riscv_t *rv)
         block_insert(&rv->block_map, next);
 #else
         /* insert the block into block cache */
-        block_t *delete_target = cache_put(rv->block_cache, rv->PC, &(*next));
-        if (delete_target) {
-            if (prev == delete_target)
-                prev = NULL;
-            chain_entry_t *entry, *safe;
-            /* correctly remove deleted block from the block chained to it */
-            list_for_each_entry_safe (entry, safe, &delete_target->list, list) {
-                if (entry->block == delete_target)
-                    continue;
-                rv_insn_t *target = entry->block->ir_tail;
-                if (target->branch_taken == delete_target->ir_head) {
-                    /* since no block chaining existing, do nothing */
-                } else if (target->branch_untaken == delete_target->ir_head) {
-                    /* since no block chaining existing, do nothing */
-                }
-                mpool_free(rv->chain_entry_mp, entry);
-            }
-            /* free deleted block */
-            uint32_t idx;
-            rv_insn_t *ir, *next;
-            for (idx = 0, ir = delete_target->ir_head;
-                 idx < delete_target->n_insn; idx++, ir = next) {
-                free(ir->fuse);
-                next = ir->next;
-                mpool_free(rv->block_ir_mp, ir);
-            }
-            mpool_free(rv->block_mp, delete_target);
-        }
+        cache_put(rv, rv->block_cache, rv->PC, rv->csr_satp, &(*next));
 #endif
+    } else {
+        assert(next->pc_start == rv->PC);
+        assert(next->satp == rv->csr_satp);
     }
 
     return next;
@@ -979,7 +952,7 @@ static bool runtime_profiler(riscv_t *rv, block_t *block)
      * we posit that our profiler could effectively identify hotspots using
      * three key indicators.
      */
-    uint32_t freq = cache_freq(rv->block_cache, block->pc_start);
+    uint32_t freq = cache_freq(rv->block_cache, block->pc_start, rv->csr_satp);
     /* To profile a block after chaining, it must first be executed. */
     if (unlikely(freq >= 2 && block->has_loops))
         return true;
@@ -1160,11 +1133,8 @@ void rv_step(void *arg)
         const rv_insn_t *ir = block->ir_head;
         if (unlikely(!ir->impl(rv, ir, rv->csr_cycle, rv->PC))) {
             /* block should not be extended if execption handler invoked */
-            prev = NULL;
             break;
         }
-
-        prev = block;
     }
 }
 
@@ -1174,11 +1144,11 @@ static void trap_handler(riscv_t *rv)
     rv_insn_t *ir = mpool_alloc(rv->block_ir_mp);
     assert(ir);
 
-
     uint32_t insn;
     while (rv->is_trapped) { /* set to false by sret/mret implementation */
         insn = rv->io.mem_ifetch(rv, rv->PC);
         assert(insn);
+        /* assert(rv->PC > 0xc0000000); */
 
         rv_decode(ir, insn);
         ir->impl = dispatch_table[ir->opcode];

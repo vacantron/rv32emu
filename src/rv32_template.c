@@ -177,7 +177,7 @@ RVOP(
         if (taken) {
             assert(NULL);
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC, true);
+            cache_get(rv->block_cache, PC, rv->csr_satp, true);
             if (!set_add(&pc_set, PC))
                 has_loops = true;
             if (cache_hot(rv->block_cache, PC))
@@ -229,7 +229,7 @@ RVOP(
     }
 #else
 #define LOOKUP_OR_UPDATE_BRANCH_HISTORY_TABLE()                               \
-    block_t *block = cache_get(rv->block_cache, PC, true);                    \
+    block_t *block = cache_get(rv->block_cache, PC, rv->csr_satp, true);                    \
     if (block) {                                                              \
         for (int i = 0; i < HISTORY_SIZE; i++) {                              \
             if (ir->branch_table->PC[i] == PC) {                              \
@@ -2014,7 +2014,7 @@ RVOP(
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC, true);
+            cache_get(rv->block_cache, PC, rv->csr_satp, true);
             if (!set_add(&pc_set, PC))
                 has_loops = true;
             if (cache_hot(rv->block_cache, PC))
@@ -2177,7 +2177,7 @@ RVOP(
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC, true);
+            cache_get(rv->block_cache, PC, rv->csr_satp, true);
             if (!set_add(&pc_set, PC))
                 has_loops = true;
             if (cache_hot(rv->block_cache, PC))
@@ -2212,7 +2212,7 @@ RVOP(
             if (!untaken)
                 goto nextop;
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC + 2, true);
+            cache_get(rv->block_cache, PC + 2, rv->csr_satp, true);
             if (!set_add(&pc_set, PC + 2))
                 has_loops = true;
             if (cache_hot(rv->block_cache, PC + 2))
@@ -2231,7 +2231,7 @@ RVOP(
         	struct rv_insn *taken = ir->branch_taken;
         	if (taken) {
 #if RV32_HAS(JIT)
-            		cache_get(rv->block_cache, PC, true);
+            		cache_get(rv->block_cache, PC, rv->csr_satp, true);
             		if (!set_add(&pc_set, PC))
             		    has_loops = true;
             		if (cache_hot(rv->block_cache, PC))
@@ -2275,7 +2275,7 @@ RVOP(
             if (!untaken)
                 goto nextop;
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC + 2, true);
+            cache_get(rv->block_cache, PC + 2, rv->csr_satp, true);
             if (!set_add(&pc_set, PC + 2))
                 has_loops = true;
             if (cache_hot(rv->block_cache, PC + 2))
@@ -2294,7 +2294,7 @@ RVOP(
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
 #if RV32_HAS(JIT)
-            cache_get(rv->block_cache, PC, true);
+            cache_get(rv->block_cache, PC, rv->csr_satp, true);
             if (!set_add(&pc_set, PC))
                 has_loops = true;
             if (cache_hot(rv->block_cache, PC))
