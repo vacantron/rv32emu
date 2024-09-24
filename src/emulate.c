@@ -1119,6 +1119,7 @@ void rv_step(void *arg)
         block_t *block = block_find_or_translate(rv);
         /* by now, a block should be available */
         assert(block);
+        assert(block->satp == rv->csr_satp);
         // assert(block->n_insn == 1);
 
         /* After emulating the previous block, it is determined whether the

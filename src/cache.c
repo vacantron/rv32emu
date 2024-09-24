@@ -174,10 +174,10 @@ void *cache_get(const cache_t *cache, uint32_t key, uint32_t satp, bool update)
                           ht_list, lfu_entry_t)
 #endif
     {
-        if (entry->key == key)
+        if (entry->key == key && ((block_t *) entry->value)->satp == satp)
             break;
     }
-    if (!entry || entry->key != key || ((block_t *) entry->value)->satp != satp)
+    if (!entry)
         return NULL;
 
     /* When the frequency of use for a specific block exceeds the predetermined
@@ -191,6 +191,8 @@ void *cache_get(const cache_t *cache, uint32_t key, uint32_t satp, bool update)
     }
 
     /* return NULL if cache miss */
+    assert(((block_t *) entry->value)->satp == satp);
+    assert(((block_t *) entry->value)->pc_start == key);
     return entry->value;
 }
 
@@ -199,6 +201,10 @@ void *cache_put(riscv_t *rv, cache_t *cache, uint32_t key, uint32_t satp, void *
     void *delete_value = NULL;
     assert(cache->list_size <= cache->capacity);
     /* check the cache is full or not before adding a new entry */
+    if (cache->list_size * 1.25 > cache->capacity) {
+        cache_free(cache);
+        rv->block_cache = cache_create(BLOCK_MAP_CAPACITY_BITS);
+    }
     if (cache->list_size == cache->capacity) {
         int max_idx = -1, max_val = -1;
         for (int i = 0; i < THRESHOLD; i++) {
@@ -265,6 +271,7 @@ void *cache_put(riscv_t *rv, cache_t *cache, uint32_t key, uint32_t satp, void *
     hlist_add_head(&new_entry->ht_list,
                    &cache->map->ht_list_head[cache_hash(key)]);
     assert(cache->list_size <= cache->capacity);
+    assert(((block_t *)value)->satp == satp);
     return delete_value;
 }
 

@@ -1000,6 +1000,7 @@ RVOP(
     uret,
     {
         /* FIXME: Implement */
+        assert(NULL);
         return false;
     },
     GEN({
@@ -1032,6 +1033,7 @@ RVOP(
     hret,
     {
         /* FIXME: Implement */
+        assert(NULL);
         return false;
     },
     GEN({
@@ -1042,6 +1044,7 @@ RVOP(
 RVOP(
     mret,
     {
+        assert(NULL);
         rv->is_trapped = false;
         rv->priv_mode = (rv->csr_mstatus & MSTATUS_MPP) >> MSTATUS_MPP_SHIFT;
         rv->csr_mstatus &= ~(MSTATUS_MPP);
