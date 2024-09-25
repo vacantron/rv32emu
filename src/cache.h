@@ -34,7 +34,7 @@ struct cache *cache_create(int size_bits);
  * @return: the specified entry or NULL
  */
 void *cache_get(const struct cache *cache, uint32_t key, uint32_t satp, bool update);
-
+void reset_cache(riscv_t *, struct cache *, uint32_t);
 /**
  * cache_put - insert a new entry into the cache
  * @cache: a pointer points to target cache

@@ -271,6 +271,7 @@ static uint32_t *csr_get_ptr(riscv_t *rv, uint32_t csr)
     }
 }
 
+int reset_cached_block = 0, reset_satp;
 /* CSRRW (Atomic Read/Write CSR) instruction atomically swaps values in the
  * CSRs and integer registers. CSRRW reads the old value of the CSR,
  * zero-extends the value to XLEN bits, and then writes it to register rd.
@@ -293,8 +294,11 @@ static uint32_t csr_csrrw(riscv_t *rv, uint32_t csr, uint32_t val)
     if (c == &rv->csr_satp) {
         const uint8_t mode_sv32 = val >> 31;
         val &= ~(MASK(9) << 22); /* disable ASID allocator */
-        if (mode_sv32)
+        if (mode_sv32) {
             *c = val;
+            reset_cached_block = 1;
+            reset_satp = rv->csr_satp;
+        }
         else        /* bare mode */
             *c = 0; /* virtual mem addr maps to same
                      * physical mem addr directly
@@ -913,6 +917,10 @@ static block_t *block_find_or_translate(riscv_t *rv)
     block_t *next = block_find(map, rv->PC);
 #else
     /* lookup the next block in the block cache */
+    if (reset_cached_block) {
+        reset_cache(rv, rv->block_cache, reset_satp);
+        reset_cached_block = 0;
+    }
     block_t *next = (block_t *) cache_get(rv->block_cache, rv->PC, rv->csr_satp, true);
 #endif
 
