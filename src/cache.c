@@ -159,38 +159,6 @@ free_lists:
     return NULL;
 }
 
-void reset_cache(riscv_t *rv, cache_t *cache, uint32_t satp)
-{
-    lfu_entry_t *entry, *safe;
-    for (int i = 0; i < THRESHOLD; i++) {
-        list_for_each_entry_safe(entry, safe, cache->lists[i], list) {
-            block_t *blk = entry->value;
-            if (blk->satp == satp) {
-                list_del_init(&entry->list);
-                hlist_del_init(&entry->ht_list);
-                cache->list_size--;
-                mpool_free(cache_mp, entry);
-
-                chain_entry_t *c_entry, *c_safe;
-                list_for_each_entry_safe(c_entry, c_safe, &blk->list, list) {
-                    if (c_entry == blk)
-                        continue;
-                    mpool_free(rv->chain_entry_mp, c_entry);
-                }
-
-                uint32_t idx;
-                rv_insn_t *ir, *next;
-                for (idx = 0, ir = blk->ir_head; idx < blk->n_insn; idx++, ir = next) {
-                    next = ir->next;
-                    free(ir->fuse);
-                    mpool_free(rv->block_ir_mp, ir);
-                }
-                mpool_free(rv->block_mp, blk);
-            }
-        }
-    }
-}
-
 void *cache_get(const cache_t *cache, uint32_t key, uint32_t satp, bool update)
 {
     if (!cache->capacity ||
