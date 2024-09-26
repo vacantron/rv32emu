@@ -192,7 +192,6 @@ void *cache_get(const cache_t *cache, uint32_t key, uint32_t satp, bool update)
 
     /* return NULL if cache miss */
     assert(((block_t *) entry->value)->satp == satp);
-    assert(((block_t *) entry->value)->pc_start == key);
     return entry->value;
 }
 
@@ -238,9 +237,9 @@ void *cache_put(riscv_t *rv, cache_t *cache, uint32_t key, uint32_t satp, void *
                         continue;
                     rv_insn_t *target = entry->block->ir_tail;
                     if (target->branch_taken == del_blk->ir_head) {
-                        /* since no block chaining existing, do nothing */
+                        target->branch_table = NULL;
                     } else if (target->branch_untaken == del_blk->ir_head) {
-                        /* since no block chaining existing, do nothing */
+                        target->branch_untaken = NULL;
                     }
                     mpool_free(rv->chain_entry_mp, entry);
                 }

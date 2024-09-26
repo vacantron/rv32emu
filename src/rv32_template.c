@@ -175,7 +175,6 @@ RVOP(
 #endif
         struct rv_insn *taken = ir->branch_taken;
         if (taken) {
-            assert(NULL);
 #if RV32_HAS(JIT)
             cache_get(rv->block_cache, PC, rv->csr_satp, true);
             if (!set_add(&pc_set, PC))
@@ -315,7 +314,6 @@ RVOP(
         struct rv_insn *untaken = ir->branch_untaken;              \
         if (!untaken)                                              \
             goto nextop;                                           \
-        assert(NULL);                                              \
         PC += 4;                                                   \
         last_pc = PC;                                              \
 	goto end_op;\
@@ -328,7 +326,6 @@ RVOP(
     struct rv_insn *taken = ir->branch_taken;                      \
     if (taken) {                                                   \
         last_pc = PC;                                              \
-        assert(NULL);                                              \
     }                                                              \
     goto end_op;
 

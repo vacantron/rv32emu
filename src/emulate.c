@@ -467,7 +467,7 @@ enum {
 static bool is_branch_taken = false;
 
 /* record the program counter of the previous block */
-static uint32_t last_pc = 0;
+static uint32_t last_pc = 0, last_satp;
 
 #if RV32_HAS(JIT)
 static set_t pc_set;
@@ -904,6 +904,7 @@ static void optimize_constant(riscv_t *rv UNUSED, block_t *block)
         ((constopt_func_t) constopt_table[ir->opcode])(ir, &info);
 }
 
+static block_t *prev = NULL;
 static block_t *block_find_or_translate(riscv_t *rv)
 {
 #if !RV32_HAS(JIT)
@@ -1112,6 +1113,14 @@ void rv_step(void *arg)
 
         rv_process_trap(rv);
 
+        if (prev && prev->pc_start != last_pc) {
+            /* update previous block */
+#if !RV32_HAS(JIT)
+            prev = block_find(&rv->block_map, last_pc);
+#else
+            prev = cache_get(rv->block_cache, last_pc, last_satp, false);
+#endif
+        }
         /* lookup the next block in block map or translate a new block,
          * and move onto the next block.
          */
@@ -1126,15 +1135,55 @@ void rv_step(void *arg)
          * assigned to either the branch_taken or branch_untaken pointer of
          * the previous block.
          */
-
+        if (prev) {
+            rv_insn_t *last_ir = prev->ir_tail;
+            /* chain block */
+            if (!insn_is_unconditional_branch(last_ir->opcode)) {
+                if (is_branch_taken && !last_ir->branch_taken) {
+                    last_ir->branch_taken = block->ir_head;
+#if RV32_HAS(JIT)
+                    chain_entry_t *new_entry = mpool_alloc(rv->chain_entry_mp);
+                    new_entry->block = prev;
+                    list_add(&new_entry->list, &block->list);
+#endif
+                } else if (!is_branch_taken && !last_ir->branch_untaken) {
+                    last_ir->branch_untaken = block->ir_head;
+#if RV32_HAS(JIT)
+                    chain_entry_t *new_entry = mpool_alloc(rv->chain_entry_mp);
+                    new_entry->block = prev;
+                    list_add(&new_entry->list, &block->list);
+#endif
+                }
+            } else if (IF_insn(last_ir, jal)
+#if RV32_HAS(EXT_C)
+                       || IF_insn(last_ir, cj) || IF_insn(last_ir, cjal)
+#endif
+            ) {
+                if (!last_ir->branch_taken) {
+                    last_ir->branch_taken = block->ir_head;
+#if RV32_HAS(JIT)
+                    chain_entry_t *new_entry = mpool_alloc(rv->chain_entry_mp);
+                    new_entry->block = prev;
+                    list_add(&new_entry->list, &block->list);
+#endif
+                }
+            }
+        }
         last_pc = rv->PC;
+        last_satp = rv->csr_satp;
 
         /* execute the block by interpreter */
         const rv_insn_t *ir = block->ir_head;
         if (unlikely(!ir->impl(rv, ir, rv->csr_cycle, rv->PC))) {
             /* block should not be extended if execption handler invoked */
+            prev = NULL;
             break;
         }
+#if RV32_HAS(JIT)
+        if (has_loops && !block->has_loops)
+            block->has_loops = true;
+#endif
+        prev = block;
     }
 }
 
