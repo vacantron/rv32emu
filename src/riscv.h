@@ -251,7 +251,7 @@ enum {
 #define RV_MARCHID ((1ULL << 31) | 1)
 #define RV_MIMPID 1
 
-#define BLOCK_MAP_CAPACITY_BITS 12
+#define BLOCK_MAP_CAPACITY_BITS 24
 
 /* forward declaration for internal structure */
 typedef struct riscv_internal riscv_t;

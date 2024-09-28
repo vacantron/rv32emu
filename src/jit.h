@@ -13,11 +13,13 @@
 struct jump {
     uint32_t offset_loc;
     uint32_t target_pc;
+    uint32_t satp;
     uint32_t target_offset;
 };
 
 struct offset_map {
     uint32_t pc;
+    uint32_t satp;
     uint32_t offset;
 };
 

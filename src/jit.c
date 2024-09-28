@@ -194,6 +194,7 @@ enum operand_size {
     S8,
     S16,
     S32,
+    S64,
 };
 
 #if defined(__x86_64__)
@@ -268,6 +269,7 @@ static inline void offset_map_insert(struct jit_state *state, int32_t target_pc)
     struct offset_map *map_entry = &state->offset_map[state->n_blocks++];
     assert(state->n_blocks < MAX_BLOCKS);
     map_entry->pc = target_pc;
+    map_entry->satp = container_of(state, riscv_t, jit_state)->csr_satp;
     map_entry->offset = state->offset;
 }
 
@@ -378,6 +380,7 @@ static inline void emit_jump_target_address(struct jit_state *state,
     struct jump *jump = &state->jumps[state->n_jumps++];
     assert(state->n_jumps < MAX_JUMPS);
     jump->offset_loc = state->offset;
+    jump->satp = container_of(state, riscv_t, jit_state)->csr_satp;
     jump->target_pc = target_pc;
     emit4(state, 0);
 }
@@ -589,6 +592,7 @@ static inline void emit_jump_target_offset(struct jit_state *state,
     struct jump *jump = &state->jumps[state->n_jumps++];
     assert(state->n_jumps < MAX_JUMPS);
     jump->offset_loc = jump_loc;
+    jump->satp = container_of(state, riscv_t, jit_state)->csr_satp;
     jump->target_offset = jump_state_offset;
 }
 
@@ -836,8 +840,9 @@ static inline void emit_load(struct jit_state *state,
         /* movzx */
         emit1(state, 0x0f);
         emit1(state, size == S8 ? 0xb6 : 0xb7);
-    } else if (size == S32) {
-        /* mov */
+    } else if (size == S32 || size == S64) {
+        if (size == S64)
+            emit1(state, 0x48); /* mov */
         emit1(state, 0x8b);
     } else
         __UNREACHABLE;
@@ -941,6 +946,8 @@ static inline void emit_store(struct jit_state *state,
         emit1(state, 0x66); /* 16-bit override */
     if (src & 8 || dst & 8 || size == S8)
         emit_rex(state, 0, !!(src & 8), 0, !!(dst & 8));
+    if (size == S64)
+        emit1(state, 0x48);
     emit1(state, size == S8 ? 0x88 : 0x89);
     emit_modrm_and_displacement(state, src, dst, offset);
 #elif defined(__aarch64__)
@@ -1579,6 +1586,17 @@ end_pick_reg:
     return idx;
 }
 
+static inline void unmap_host_reg(int idx)
+{
+    for (int i = 0; i < n_host_regs; i++) {
+        if (register_map[i].reg_idx == idx) {
+            register_map[i].vm_reg_idx = -1;
+            return;
+        }
+    }
+    assert(NULL);
+}
+
 /* Unmap the vm register to the host register. */
 static inline void unmap_vm_reg(int idx)
 {
@@ -1906,7 +1924,7 @@ static void resolve_jumps(struct jit_state *state)
         else {
             target_loc = jump.offset_loc + sizeof(uint32_t);
             for (int i = 0; i < state->n_blocks; i++) {
-                if (jump.target_pc == state->offset_map[i].pc) {
+                if (jump.satp == state->offset_map[i].satp && jump.target_pc == state->offset_map[i].pc) {
                     target_loc = state->offset_map[i].offset;
                     break;
                 }
@@ -1939,14 +1957,14 @@ static void translate_chained_block(struct jit_state *state,
         return;
     rv_insn_t *ir = block->ir_tail;
     if (ir->branch_untaken && !set_has(&state->set, ir->branch_untaken->pc)) {
-        block_t *block1 =
-            cache_get(rv->block_cache, ir->branch_untaken->pc, rv->csr_satp, false);
+        block_t *block1 = cache_get(rv->block_cache, ir->branch_untaken->pc,
+                                    rv->csr_satp, false);
         if (block1->translatable)
             translate_chained_block(state, rv, block1);
     }
     if (ir->branch_taken && !set_has(&state->set, ir->branch_taken->pc)) {
-        block_t *block1 =
-            cache_get(rv->block_cache, ir->branch_taken->pc, rv->csr_satp, false);
+        block_t *block1 = cache_get(rv->block_cache, ir->branch_taken->pc,
+                                    rv->csr_satp, false);
         if (block1->translatable)
             translate_chained_block(state, rv, block1);
     }
@@ -1961,8 +1979,8 @@ static void translate_chained_block(struct jit_state *state,
         }
         if (bt->PC[max_idx] && bt->times[max_idx] >= IN_JUMP_THRESHOLD &&
             !set_has(&state->set, bt->PC[max_idx])) {
-            block_t *block1 =
-                cache_get(rv->block_cache, bt->PC[max_idx], rv->csr_satp, false);
+            block_t *block1 = cache_get(rv->block_cache, bt->PC[max_idx],
+                                        rv->csr_satp, false);
             if (block1 && block1->translatable)
                 translate_chained_block(state, rv, block1);
         }
@@ -1974,7 +1992,7 @@ void jit_translate(riscv_t *rv, block_t *block)
     struct jit_state *state = rv->jit_state;
     if (set_has(&state->set, block->pc_start)) {
         for (int i = 0; i < state->n_blocks; i++) {
-            if (block->pc_start == state->offset_map[i].pc) {
+            if (rv->csr_satp == block->satp && block->pc_start == state->offset_map[i].pc) {
                 block->offset = state->offset_map[i].offset;
                 block->hot = true;
                 return;

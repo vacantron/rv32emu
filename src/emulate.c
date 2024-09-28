@@ -493,7 +493,7 @@ static void rv_process_trap(riscv_t *);
             goto end_op;                                              \
         }                                                             \
         const rv_insn_t *next = ir->next;                             \
-        /* rv_process_trap(rv); */                                         \
+        /* rv_process_trap(rv); */                                    \
         MUST_TAIL return next->impl(rv, next, cycle, PC);             \
     end_op:                                                           \
         rv->csr_cycle = cycle;                                        \
@@ -664,6 +664,12 @@ FORCE_INLINE bool insn_is_unconditional_branch(uint8_t opcode)
     case rv_insn_jalr:
     case rv_insn_sret:
     case rv_insn_mret:
+    case rv_insn_csrrw:
+    case rv_insn_csrrs:
+    case rv_insn_csrrc:
+    case rv_insn_csrrwi:
+    case rv_insn_csrrsi:
+    case rv_insn_csrrci:
 #if RV32_HAS(EXT_C)
     case rv_insn_cj:
     case rv_insn_cjalr:
@@ -913,7 +919,8 @@ static block_t *block_find_or_translate(riscv_t *rv)
     block_t *next = block_find(map, rv->PC);
 #else
     /* lookup the next block in the block cache */
-    block_t *next = (block_t *) cache_get(rv->block_cache, rv->PC, rv->csr_satp, true);
+    block_t *next =
+        (block_t *) cache_get(rv->block_cache, rv->PC, rv->csr_satp, true);
 #endif
 
     if (!next || next->satp != rv->csr_satp) {
@@ -1088,6 +1095,171 @@ static void rv_process_trap(riscv_t *rv)
     }
 }
 
+static void emu_update_uart_interrupts(riscv_t *rv)
+{
+    vm_attr_t *attr = PRIV(rv);
+    u8250_update_interrupts(attr->uart);
+    if (attr->uart->pending_ints) {
+        attr->plic->active |= IRQ_UART_BIT;
+    } else
+        attr->plic->active &= ~IRQ_UART_BIT;
+    plic_update_interrupts(rv);
+}
+
+#define MMIO_PLIC 1
+#define MMIO_UART 0
+#define MMIO_R 1
+#define MMIO_W 0
+
+uint8_t ret_char;
+/* clang-format off */
+#define MMIO_OP_JIT(io, rw)                                           \
+    IIF(io)( /* PLIC */                                           \
+        IIF(rw)( /* read */                                       \
+            read_val = plic_read(rv, (addr & 0x3FFFFFF) >> 2);           \
+	    plic_update_interrupts(rv);          \
+	    ,     /* write */                                     \
+            plic_write(rv, (addr & 0x3FFFFFF) >> 2, val);   \
+            plic_update_interrupts(rv);                   \
+        )                                                         \
+        ,    /* UART */                                           \
+        IIF(rw)( /* read */                                       \
+            /*return 0x60 | 0x1; */                                   \
+	    ret_char = u8250_read(PRIV(rv)->uart, addr & 0xFFFFF);\
+	    emu_update_uart_interrupts(rv);\
+	    ,   /* write */                                       \
+	    u8250_write(PRIV(rv)->uart, addr & 0xFFFFF, val);\
+	    emu_update_uart_interrupts(rv);\
+	)                                                         \
+    )
+/* clang-format on */
+
+/* clang-format off */
+#define MMIO_OP(io, rw)                                           \
+    IIF(io)( /* PLIC */                                           \
+        IIF(rw)( /* read */                                       \
+            read_val = plic_read(rv, (addr & 0x3FFFFFF) >> 2);           \
+	    plic_update_interrupts(rv); return read_val;          \
+	    ,     /* write */                                     \
+            plic_write(rv, (addr & 0x3FFFFFF) >> 2, val);   \
+            plic_update_interrupts(rv); return;                   \
+        )                                                         \
+        ,    /* UART */                                           \
+        IIF(rw)( /* read */                                       \
+            /*return 0x60 | 0x1; */                                   \
+	    ret_char = u8250_read(PRIV(rv)->uart, addr & 0xFFFFF);\
+	    emu_update_uart_interrupts(rv);\
+	    return ret_char;\
+	    ,   /* write */                                       \
+	    u8250_write(PRIV(rv)->uart, addr & 0xFFFFF, val);\
+	    emu_update_uart_interrupts(rv);\
+	    return;\
+	)                                                         \
+    )
+/* clang-format on */
+
+#define MMIO_READ_JIT()                                     \
+    do {                                                    \
+        uint32_t read_val;                                  \
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */ \
+            /* 256 regions of 1MiB */                       \
+            switch ((addr >> 20) & MASK(8)) {               \
+            case 0x0:                                       \
+            case 0x2: /* PLIC (0 - 0x3F) */                 \
+                MMIO_OP_JIT(MMIO_PLIC, MMIO_R);             \
+            case 0x40: /* UART */                           \
+                MMIO_OP_JIT(MMIO_UART, MMIO_R);             \
+            }                                               \
+        }                                                   \
+    } while (0)
+
+#define MMIO_WRITE_JIT()                                    \
+    do {                                                    \
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */ \
+            /* 256 regions of 1MiB */                       \
+            switch ((addr >> 20) & MASK(8)) {               \
+            case 0x0:                                       \
+            case 0x2: /* PLIC (0 - 0x3F) */                 \
+                MMIO_OP_JIT(MMIO_PLIC, MMIO_W);             \
+            case 0x40: /* UART */                           \
+                MMIO_OP_JIT(MMIO_UART, MMIO_W);             \
+            }                                               \
+        }                                                   \
+    } while (0)
+
+#define MMIO_READ()                                         \
+    do {                                                    \
+        uint32_t read_val;                                  \
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */ \
+            /* 256 regions of 1MiB */                       \
+            switch ((addr >> 20) & MASK(8)) {               \
+            case 0x0:                                       \
+            case 0x2: /* PLIC (0 - 0x3F) */                 \
+                MMIO_OP(MMIO_PLIC, MMIO_R);                 \
+            case 0x40: /* UART */                           \
+                MMIO_OP(MMIO_UART, MMIO_R);                 \
+            }                                               \
+        }                                                   \
+    } while (0)
+
+#define MMIO_WRITE()                                        \
+    do {                                                    \
+        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */ \
+            /* 256 regions of 1MiB */                       \
+            switch ((addr >> 20) & MASK(8)) {               \
+            case 0x0:                                       \
+            case 0x2: /* PLIC (0 - 0x3F) */                 \
+                MMIO_OP(MMIO_PLIC, MMIO_W);                 \
+            case 0x40: /* UART */                           \
+                MMIO_OP(MMIO_UART, MMIO_W);                 \
+            }                                               \
+        }                                                   \
+    } while (0)
+
+static uint32_t *mmu_walk(riscv_t *rv,
+                          const uint32_t addr,
+                          uint32_t *level,
+                          uint32_t **pte_ref);
+
+#define get_ppn_and_offset(ppn, offset)                       \
+    uint32_t ppn;                                             \
+    uint32_t offset;                                          \
+    do {                                                      \
+        ppn = *pte >> (RV_PG_SHIFT - 2) << RV_PG_SHIFT;       \
+        offset = level == 1 ? addr & MASK((RV_PG_SHIFT + 10)) \
+                            : addr & MASK(RV_PG_SHIFT);       \
+    } while (0)
+
+volatile bool is_jit = false;
+#define MMU_FAULT_CHECK(op, rv, pte, addr, access_bits) \
+    mmu_##op##_fault_check(rv, pte, addr, access_bits)
+#define MMU_FAULT_CHECK_IMPL(op, pgfault)                                   \
+    static bool mmu_##op##_fault_check(riscv_t *rv, uint32_t *pte,          \
+                                       uint32_t addr, uint32_t access_bits) \
+    {                                                                       \
+        if (!(pte && (*pte & access_bits))) {                               \
+            if (satp_cnt >= 2)                                              \
+                rv->is_trapped = true;                                      \
+            /* assert(is_jit == false); */                                        \
+            rv_trap_##pgfault(rv, addr);                                    \
+            return false;                                                   \
+        }                                                                   \
+        /* PTE not found, map it in handler */                              \
+        if (!pte) {                                                         \
+            if (satp_cnt >= 2)                                              \
+                rv->is_trapped = true;                                      \
+            /* assert(is_jit == false); */                                        \
+            rv_trap_##pgfault(rv, addr);                                    \
+            return false;                                                   \
+        }                                                                   \
+        /* valid PTE */                                                     \
+        return true;                                                        \
+    }
+
+MMU_FAULT_CHECK_IMPL(ifetch, pagefault_insn)
+MMU_FAULT_CHECK_IMPL(read, pagefault_load)
+MMU_FAULT_CHECK_IMPL(write, pagefault_store)
+
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1172,6 +1344,105 @@ void rv_step(void *arg)
         last_pc = rv->PC;
         last_satp = rv->csr_satp;
 
+#if RV32_HAS(JIT)
+        /* executed through the tier-1 JIT compiler */
+        struct jit_state *state = rv->jit_state;
+        if (block->hot) {
+            is_jit = true;
+            uint64_t jit_addr = block->offset;
+        rerun_hot:
+            ((exec_block_func_t) state->buf)(
+                rv, (uintptr_t) (state->buf + jit_addr));
+            if (rv->mmu_ret) {
+                uint32_t addr = rv->mmu_addr;
+                if (rv->csr_satp) {
+                    uint32_t level;
+                    uint32_t *pte_ref;
+                    uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+                    bool ok = rv->mmu_type
+                                  ? MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W)
+                                  : MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
+                    if (unlikely(!ok)) {
+                        pte = mmu_walk(rv, addr, &level, &pte_ref);
+                        pte = pte_ref;
+                    }
+                    {
+                        get_ppn_and_offset(ppn, offset);
+                        const uint32_t addr = ppn | offset;
+                        const vm_attr_t *attr = PRIV(rv);
+                        uint32_t val = rv->mmu_val;
+                        if (addr > attr->mem->mem_size) {
+                            assert(NULL);
+                            rv->mmu_is_mmio = 1;
+                            if (rv->mmu_type)
+                                MMIO_WRITE_JIT();
+                            else {
+                                MMIO_READ_JIT();
+                                rv->mmu_val = ret_char;
+                            }
+                        } else {
+                            rv->mmu_addr = addr;
+                        }
+                    }
+                }
+                jit_addr = rv->mmu_ret;
+                rv->mmu_ret = 0;
+                goto rerun_hot;
+            }
+            prev = NULL;
+            is_jit = false;
+            continue;
+        } /* check if the execution path is potential hotspot */
+        if (block->translatable && runtime_profiler(rv, block)) {
+            jit_translate(rv, block);
+            uint64_t jit_addr = block->offset;
+            is_jit = true;
+        rerun:
+            ((exec_block_func_t) state->buf)(
+                rv, (uintptr_t) (state->buf + jit_addr));
+            if (rv->mmu_ret) {
+                uint32_t addr = rv->mmu_addr;
+                if (rv->csr_satp) {
+                    uint32_t level;
+                    uint32_t *pte_ref;
+                    uint32_t *pte = mmu_walk(rv, addr, &level, &pte_ref);
+                    bool ok = rv->mmu_type
+                                  ? MMU_FAULT_CHECK(write, rv, pte, addr, PTE_W)
+                                  : MMU_FAULT_CHECK(read, rv, pte, addr, PTE_R);
+                    if (unlikely(!ok)) {
+                        pte = mmu_walk(rv, addr, &level, &pte_ref);
+                        pte = pte_ref;
+                    }
+                    {
+                        get_ppn_and_offset(ppn, offset);
+                        const uint32_t addr = ppn | offset;
+                        const vm_attr_t *attr = PRIV(rv);
+                        uint32_t val = rv->mmu_val;
+                        if (addr > attr->mem->mem_size) {
+                            rv->mmu_is_mmio = 1;
+                            assert(NULL);
+                            if (rv->mmu_type)
+                                MMIO_WRITE_JIT();
+                            else {
+                                MMIO_READ_JIT();
+                                rv->mmu_val = ret_char;
+                            }
+                        } else {
+                            rv->mmu_addr = addr;
+                        }
+                    }
+                }
+                jit_addr = rv->mmu_ret;
+                rv->mmu_ret = 0;
+                goto rerun;
+            }
+            prev = NULL;
+            is_jit = false;
+            continue;
+        }
+        set_reset(&pc_set);
+        has_loops = false;
+#endif
         /* execute the block by interpreter */
         const rv_insn_t *ir = block->ir_head;
         if (unlikely(!ir->impl(rv, ir, rv->csr_cycle, rv->PC))) {
@@ -1281,42 +1552,6 @@ static uint32_t *mmu_walk(riscv_t *rv,
  * access permission else true
  */
 /* FIXME: handle access fault, addr out of range check */
-#define MMU_FAULT_CHECK(op, rv, pte, addr, access_bits) \
-    mmu_##op##_fault_check(rv, pte, addr, access_bits)
-#define MMU_FAULT_CHECK_IMPL(op, pgfault)                                   \
-    static bool mmu_##op##_fault_check(riscv_t *rv, uint32_t *pte,          \
-                                       uint32_t addr, uint32_t access_bits) \
-    {                                                                       \
-        if (!(pte && (*pte & access_bits))) {                               \
-            if (satp_cnt >= 2)                                              \
-                rv->is_trapped = true;                                      \
-            rv_trap_##pgfault(rv, addr);                                    \
-            return false;                                                   \
-        }                                                                   \
-        /* PTE not found, map it in handler */                              \
-        if (!pte) {                                                         \
-            if (satp_cnt >= 2)                                              \
-                rv->is_trapped = true;                                      \
-            rv_trap_##pgfault(rv, addr);                                    \
-            return false;                                                   \
-        }                                                                   \
-        /* valid PTE */                                                     \
-        return true;                                                        \
-    }
-
-MMU_FAULT_CHECK_IMPL(ifetch, pagefault_insn)
-MMU_FAULT_CHECK_IMPL(read, pagefault_load)
-MMU_FAULT_CHECK_IMPL(write, pagefault_store)
-
-#define get_ppn_and_offset(ppn, offset)                       \
-    uint32_t ppn;                                             \
-    uint32_t offset;                                          \
-    do {                                                      \
-        ppn = *pte >> (RV_PG_SHIFT - 2) << RV_PG_SHIFT;       \
-        offset = level == 1 ? addr & MASK((RV_PG_SHIFT + 10)) \
-                            : addr & MASK(RV_PG_SHIFT);       \
-    } while (0)
-
 uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
 {
     if (!rv->csr_satp)
@@ -1335,76 +1570,6 @@ uint32_t mmu_ifetch(riscv_t *rv, const uint32_t addr)
     get_ppn_and_offset(ppn, offset);
     return memory_ifetch(ppn | offset);
 }
-
-static void emu_update_uart_interrupts(riscv_t *rv)
-{
-    vm_attr_t *attr = PRIV(rv);
-    u8250_update_interrupts(attr->uart);
-    if (attr->uart->pending_ints) {
-        attr->plic->active |= IRQ_UART_BIT;
-    } else
-        attr->plic->active &= ~IRQ_UART_BIT;
-    plic_update_interrupts(rv);
-}
-
-#define MMIO_PLIC 1
-#define MMIO_UART 0
-#define MMIO_R 1
-#define MMIO_W 0
-
-uint8_t ret_char;
-/* clang-format off */
-#define MMIO_OP(io, rw)                                           \
-    IIF(io)( /* PLIC */                                           \
-        IIF(rw)( /* read */                                       \
-            read_val = plic_read(rv, (addr & 0x3FFFFFF) >> 2);           \
-	    plic_update_interrupts(rv); return read_val;          \
-	    ,     /* write */                                     \
-            plic_write(rv, (addr & 0x3FFFFFF) >> 2, val);   \
-            plic_update_interrupts(rv); return;                   \
-        )                                                         \
-        ,    /* UART */                                           \
-        IIF(rw)( /* read */                                       \
-            /*return 0x60 | 0x1; */                                   \
-	    ret_char = u8250_read(PRIV(rv)->uart, addr & 0xFFFFF);\
-	    emu_update_uart_interrupts(rv);\
-	    return ret_char;\
-	    ,   /* write */                                       \
-	    u8250_write(PRIV(rv)->uart, addr & 0xFFFFF, val);\
-	    emu_update_uart_interrupts(rv);\
-	    return;\
-	)                                                         \
-    )
-/* clang-format on */
-
-#define MMIO_READ()                                         \
-    do {                                                    \
-        uint32_t read_val;                                  \
-        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */ \
-            /* 256 regions of 1MiB */                       \
-            switch ((addr >> 20) & MASK(8)) {               \
-            case 0x0:                                       \
-            case 0x2: /* PLIC (0 - 0x3F) */                 \
-                MMIO_OP(MMIO_PLIC, MMIO_R);                 \
-            case 0x40: /* UART */                           \
-                MMIO_OP(MMIO_UART, MMIO_R);                 \
-            }                                               \
-        }                                                   \
-    } while (0)
-
-#define MMIO_WRITE()                                        \
-    do {                                                    \
-        if ((addr >> 28) == 0xF) { /* MMIO at 0xF_______ */ \
-            /* 256 regions of 1MiB */                       \
-            switch ((addr >> 20) & MASK(8)) {               \
-            case 0x0:                                       \
-            case 0x2: /* PLIC (0 - 0x3F) */                 \
-                MMIO_OP(MMIO_PLIC, MMIO_W);                 \
-            case 0x40: /* UART */                           \
-                MMIO_OP(MMIO_UART, MMIO_W);                 \
-            }                                               \
-        }                                                   \
-    } while (0)
 
 uint32_t mmu_read_w(riscv_t *rv, const uint32_t addr)
 {
