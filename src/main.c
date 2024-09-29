@@ -255,6 +255,11 @@ int main(int argc, char **args)
     /* finalize the RISC-V runtime */
     rv_delete(rv);
 
+    extern uint64_t jit_compiled;
+    extern uint64_t jit_total;
+    printf("JIT compiled blocks: %#lx\n", jit_compiled);
+    printf("Compiled block invoked times: %#lx\n", jit_total);
+
     printf("inferior exit code %d\n", attr.exit_code);
 
 end:

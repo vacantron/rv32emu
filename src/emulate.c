@@ -1240,7 +1240,7 @@ volatile bool is_jit = false;
         if (!(pte && (*pte & access_bits))) {                               \
             if (satp_cnt >= 2)                                              \
                 rv->is_trapped = true;                                      \
-            /* assert(is_jit == false); */                                        \
+            assert(is_jit == false);                                        \
             rv_trap_##pgfault(rv, addr);                                    \
             return false;                                                   \
         }                                                                   \
@@ -1248,7 +1248,7 @@ volatile bool is_jit = false;
         if (!pte) {                                                         \
             if (satp_cnt >= 2)                                              \
                 rv->is_trapped = true;                                      \
-            /* assert(is_jit == false); */                                        \
+            assert(is_jit == false);                                        \
             rv_trap_##pgfault(rv, addr);                                    \
             return false;                                                   \
         }                                                                   \
@@ -1260,6 +1260,8 @@ MMU_FAULT_CHECK_IMPL(ifetch, pagefault_insn)
 MMU_FAULT_CHECK_IMPL(read, pagefault_load)
 MMU_FAULT_CHECK_IMPL(write, pagefault_store)
 
+uint64_t jit_compiled;
+uint64_t jit_total;
 void rv_step(void *arg)
 {
     assert(arg);
@@ -1349,6 +1351,7 @@ void rv_step(void *arg)
         struct jit_state *state = rv->jit_state;
         if (block->hot) {
             is_jit = true;
+            jit_total++;
             uint64_t jit_addr = block->offset;
         rerun_hot:
             ((exec_block_func_t) state->buf)(
@@ -1395,6 +1398,7 @@ void rv_step(void *arg)
         } /* check if the execution path is potential hotspot */
         if (block->translatable && runtime_profiler(rv, block)) {
             jit_translate(rv, block);
+            jit_compiled++;
             uint64_t jit_addr = block->offset;
             is_jit = true;
         rerun:
