@@ -7,7 +7,7 @@ BIN := $(OUT)/rv32emu
 CONFIG_FILE := $(OUT)/.config
 -include $(CONFIG_FILE)
 
-CFLAGS = -std=gnu99 -O2 -Wall -Wextra
+CFLAGS = -std=gnu99 -O2 -Wall -Wextra -g -Og
 CFLAGS += -Wno-unused-label
 CFLAGS += -include src/common.h
 
@@ -286,7 +286,7 @@ endif
 endif
 
 clean:
-	$(RM) $(BIN) $(OBJS) $(HIST_BIN) $(HIST_OBJS) $(deps) $(WEB_FILES) $(CACHE_OUT) src/rv32_jit.c
+	$(RM) $(BIN) $(OBJS) $(HIST_BIN) $(HIST_OBJS) $(deps) $(WEB_FILES) $(CACHE_OUT)
 distclean: clean
 	-$(RM) $(DOOM_DATA) $(QUAKE_DATA)
 	$(RM) -r $(TIMIDITY_DATA)
