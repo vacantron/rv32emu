@@ -11,6 +11,8 @@ CFLAGS = -std=gnu99 -O2 -Wall -Wextra
 CFLAGS += -Wno-unused-label
 CFLAGS += -include src/common.h
 
+OBJS_EXT :=
+
 # In the system test suite, the executable is an ELF file.
 # However, the Linux kernel emulation includes the Image, DT, and
 # root filesystem (rootfs). Therefore, the test suite needs this
@@ -28,6 +30,9 @@ $(call set-feature, ON_TEST)
 # Enable system emulation
 ENABLE_SYSTEM ?= 0
 $(call set-feature, SYSTEM)
+ifeq ($(call has, SYSTEM), 1)
+OBJS_EXT += system.o
+endif
 
 # Enable link-time optimization (LTO)
 ENABLE_LTO ?= 1
@@ -57,8 +62,6 @@ endif
 
 # Disable Intel's Control-flow Enforcement Technology (CET)
 CFLAGS += $(CFLAGS_NO_CET)
-
-OBJS_EXT :=
 
 # Integer Multiplication and Division instructions
 ENABLE_EXT_M ?= 1
