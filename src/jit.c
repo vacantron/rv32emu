@@ -1331,7 +1331,8 @@ void emit_jit_mmu_handler(struct jit_state *state,
     emit_modrm(state, 0x3 << 6, 0x2, temp_reg);
 
     /* restore $rdi after function return */
-    emit_load_imm(state, parameter_reg[0], (uintptr_t) rv);
+    emit1(state, 0x8f);
+    emit_modrm(state, 0x3 << 6, 0x0, parameter_reg[0]);
 #elif defined(__aarch64__)
     uint32_t insn;
 
