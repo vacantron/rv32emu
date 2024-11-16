@@ -1332,6 +1332,27 @@ void emit_jit_mmu_handler(struct jit_state *state,
 
     /* restore $rdi after function return */
     emit_load_imm(state, parameter_reg[0], (uintptr_t) rv);
+#elif defined(__aarch64__)
+    uint32_t insn;
+
+    /* caller-saved, push into stack */
+    insn = (0xf81f0fe << 4) | R1;
+    emit_a64(state, insn);
+    insn = (0xf81f0fe << 4) | R0;
+    emit_a64(state, insn);
+
+    emit_movewide_imm(state, false, R1, vreg_idx);
+
+    /* blr r8 */
+    emit_movewide_imm(state, true, temp_reg, (uintptr_t) &jit_mmu_handler);
+    insn = (0xd63f << 16) | (temp_reg << 5);
+    emit_a64(state, insn);
+
+    /* restore, pop from stack */
+    insn = (0xf84107e << 4) | R0;
+    emit_a64(state, insn);
+    insn = (0xf84107e << 4) | R1;
+    emit_a64(state, insn);
 #endif
 }
 
@@ -1363,6 +1384,9 @@ void emit_jit_mmio_escape(struct jit_state *state, int rv_insn_type)
         assert(NULL);
         __UNREACHABLE;
     }
+#elif defined(__aarch64__)
+    /* skip 7 instructions */
+    emit_a64(state, (0x54 << 24) | (0x7 << 5));
 #endif
 }
 #endif

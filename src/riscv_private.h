@@ -135,6 +135,14 @@ struct riscv_internal {
     riscv_word_t X[N_RV_REGS];
     riscv_word_t PC;
 
+#if RV32_HAS(JIT) && RV32_HAS(SYSTEM)
+    struct {
+        uint32_t is_mmio; /* whether is MMIO or not */
+        uint32_t type;    /* 0: read, 1: write */
+        uint32_t vaddr;
+        uint32_t paddr;
+    } jit_mmu;
+#endif
     /* user provided data */
     riscv_user_t data;
 
@@ -182,14 +190,6 @@ struct riscv_internal {
 #else
     struct cache *block_cache;
     struct mpool *chain_entry_mp;
-#if RV32_HAS(SYSTEM)
-    struct {
-        uint32_t is_mmio; /* whether is MMIO or not */
-        uint32_t type;    /* 0: read, 1: write */
-        uint32_t vaddr;
-        uint32_t paddr;
-    } jit_mmu;
-#endif
 #if RV32_HAS(T2C)
     struct list_head wait_queue;
     pthread_mutex_t wait_queue_lock;
