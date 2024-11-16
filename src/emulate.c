@@ -285,6 +285,9 @@ static block_t *block_alloc(riscv_t *rv)
     block->has_loops = false;
     block->n_invoke = 0;
     INIT_LIST_HEAD(&block->list);
+#if RV32_HAS(SYSTEM)
+    block->satp = rv->csr_satp;
+#endif
 #if RV32_HAS(T2C)
     block->compiled = false;
 #endif
@@ -583,7 +586,13 @@ retranslate:
 
 #if RV32_HAS(SYSTEM)
         if (!insn && need_retranslate) {
+#if !RV32_HAS(JIT)
             memset(block, 0, sizeof(block_t));
+#else
+            block->n_insn = 0;
+            block->pc_start = block->pc_end = 0;
+            block->ir_head = block->ir_tail = NULL;
+#endif
             need_retranslate = false;
             goto retranslate;
         }
@@ -809,6 +818,10 @@ static block_t *block_find_or_translate(riscv_t *rv)
 #else
     /* lookup the next block in the block cache */
     block_t *next = (block_t *) cache_get(rv->block_cache, rv->PC, true);
+#if RV32_HAS(SYSTEM)
+    if (next && next->satp != rv->csr_satp)
+        next = NULL;
+#endif
 #endif
 
     if (!next) {
@@ -826,8 +839,12 @@ static block_t *block_find_or_translate(riscv_t *rv)
 #if RV32_HAS(GDBSTUB)
         if (likely(!rv->debug_mode))
 #endif
+
+/* FIXME: disable uOP fusion temporarily for system just-in-time compilation */
+#if !RV32_HAS(SYSTEM) || !RV32_HAS(JIT)
             /* macro operation fusion */
             match_pattern(rv, next);
+#endif
 
 #if !RV32_HAS(JIT)
         /* insert the block into block map */
@@ -844,29 +861,38 @@ static block_t *block_find_or_translate(riscv_t *rv)
                       *untaken = delete_target->ir_tail->branch_untaken;
             if (taken && taken->pc != delete_target->pc_start) {
                 block_t *target = cache_get(rv->block_cache, taken->pc, false);
-                bool flag = false;
-                list_for_each_entry_safe (entry, safe, &target->list, list) {
-                    if (entry->block == delete_target) {
-                        list_del_init(&entry->list);
-                        mpool_free(rv->chain_entry_mp, entry);
-                        flag = true;
+                IIF(RV32_HAS(SYSTEM))
+                (if (target->satp == delete_target->satp), )
+                {
+                    bool flag = false;
+                    list_for_each_entry_safe (entry, safe, &target->list,
+                                              list) {
+                        if (entry->block == delete_target) {
+                            list_del_init(&entry->list);
+                            mpool_free(rv->chain_entry_mp, entry);
+                            flag = true;
+                        }
                     }
+                    assert(flag);
                 }
-                assert(flag);
             }
             if (untaken && untaken->pc != delete_target->pc_start) {
                 block_t *target =
                     cache_get(rv->block_cache, untaken->pc, false);
-                assert(target);
-                bool flag = false;
-                list_for_each_entry_safe (entry, safe, &target->list, list) {
-                    if (entry->block == delete_target) {
-                        list_del_init(&entry->list);
-                        mpool_free(rv->chain_entry_mp, entry);
-                        flag = true;
+                IIF(RV32_HAS(SYSTEM))
+                (if (target->satp == delete_target->satp), )
+                {
+                    bool flag = false;
+                    list_for_each_entry_safe (entry, safe, &target->list,
+                                              list) {
+                        if (entry->block == delete_target) {
+                            list_del_init(&entry->list);
+                            mpool_free(rv->chain_entry_mp, entry);
+                            flag = true;
+                        }
                     }
+                    assert(flag);
                 }
-                assert(flag);
             }
             /* correctly remove deleted block from the block chained to it */
             list_for_each_entry_safe (entry, safe, &delete_target->list, list) {
@@ -904,6 +930,10 @@ static bool runtime_profiler(riscv_t *rv, block_t *block)
      * we posit that our profiler could effectively identify hotspots using
      * three key indicators.
      */
+#if RV32_HAS(SYSTEM)
+    if (block->satp != rv->csr_satp)
+        return false;
+#endif
     uint32_t freq = cache_freq(rv->block_cache, block->pc_start);
     /* To profile a block after chaining, it must first be executed. */
     if (unlikely(freq >= 2 && block->has_loops))
@@ -1035,7 +1065,7 @@ void rv_step(void *arg)
         }
         last_pc = rv->PC;
 #if RV32_HAS(JIT)
-#if RV32_HAS(T2C)
+#if RV32_HAS(T2C) && !RV32_HAS(SYSTEM)
         /* executed through the tier-2 JIT compiler */
         if (block->hot2) {
             ((exec_t2c_func_t) block->func)(rv);

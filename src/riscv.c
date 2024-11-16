@@ -427,7 +427,7 @@ riscv_t *rv_create(riscv_user_t rv_attr)
     rv->jit_state = jit_state_init(CODE_CACHE_SIZE);
     rv->block_cache = cache_create(BLOCK_MAP_CAPACITY_BITS);
     assert(rv->block_cache);
-#if RV32_HAS(T2C)
+#if RV32_HAS(T2C) && !RV32_HAS(SYSTEM)
     rv->quit = false;
     rv->jit_cache = jit_cache_init();
     /* prepare wait queue. */

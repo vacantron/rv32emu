@@ -45,6 +45,9 @@
 #include "riscv.h"
 #include "riscv_private.h"
 #include "utils.h"
+#if RV32_HAS(SYSTEM)
+#include "system.h"
+#endif
 
 #define JIT_CLS_MASK 0x07
 #define JIT_ALU_OP_MASK 0xf0
@@ -1233,6 +1236,137 @@ static void muldivmod(struct jit_state *state,
 }
 #endif /* RV32_HAS(EXT_M) */
 
+#if RV32_HAS(SYSTEM)
+uint32_t jit_mmio_read_wrapper(riscv_t *rv, uint32_t addr)
+{
+    MMIO_READ();
+    __UNREACHABLE;
+}
+
+void jit_mmu_handler(riscv_t *rv, uint32_t vreg_idx)
+{
+    uint32_t addr = rv->jit_mmu.vaddr;
+
+    if (!rv->csr_satp) {
+        rv->jit_mmu.paddr = addr;
+        return;
+    }
+
+    bool ok;
+    uint32_t level, *pte = mmu_walk(rv, addr, &level);
+
+    if (rv->jit_mmu.type == rv_insn_sb || rv->jit_mmu.type == rv_insn_sh ||
+        rv->jit_mmu.type == rv_insn_sw)
+        ok = mmu_read_fault_check(rv, pte, addr, PTE_R);
+    else
+        ok = mmu_write_fault_check(rv, pte, addr, PTE_W);
+
+    if (unlikely(!ok))
+        pte = mmu_walk(rv, addr, &level);
+
+    get_ppn_and_offset();
+    addr = ppn | offset;
+
+    if (likely(addr < PRIV(rv)->mem->mem_size)) {
+        rv->jit_mmu.is_mmio = 0;
+        rv->jit_mmu.paddr = addr;
+        return;
+    }
+
+    uint32_t val;
+    rv->jit_mmu.is_mmio = 1;
+
+    switch (rv->jit_mmu.type) {
+    case rv_insn_sb:
+        rv->X[vreg_idx] = (uint8_t) jit_mmio_read_wrapper(rv, addr);
+        break;
+    case rv_insn_sh:
+        rv->X[vreg_idx] = (uint16_t) jit_mmio_read_wrapper(rv, addr);
+        break;
+    case rv_insn_sw:
+        rv->X[vreg_idx] = jit_mmio_read_wrapper(rv, addr);
+        break;
+    case rv_insn_lb:
+        val = (int8_t) rv->X[vreg_idx];
+        MMIO_WRITE();
+        break;
+    case rv_insn_lh:
+        val = (int16_t) rv->X[vreg_idx];
+        MMIO_WRITE();
+        break;
+    case rv_insn_lw:
+        val = (uint32_t) rv->X[vreg_idx];
+        MMIO_WRITE();
+        break;
+    case rv_insn_lbu:
+        val = (uint8_t) rv->X[vreg_idx];
+        MMIO_WRITE();
+        break;
+    case rv_insn_lhu:
+        val = (uint16_t) rv->X[vreg_idx];
+        MMIO_WRITE();
+        break;
+    default:
+        assert(NULL);
+        __UNREACHABLE;
+    }
+}
+
+void emit_jit_mmu_handler(struct jit_state *state,
+                          riscv_t *rv,
+                          uint8_t vreg_idx)
+{
+#if defined(__x86_64__)
+    /* push imm32 */
+    emit1(state, 0x68);
+    emit4(state, (uint32_t) vreg_idx);
+
+    /* push $rdi */
+    emit1(state, 0xff);
+    emit_modrm(state, 0x3 << 6, 0x6, parameter_reg[0]);
+
+    /* call $rcx */
+    emit_load_imm(state, temp_reg, (uintptr_t) &jit_mmu_handler);
+    emit1(state, 0xff);
+    emit_modrm(state, 0x3 << 6, 0x2, temp_reg);
+
+    /* restore $rdi after function return */
+    emit_load_imm(state, parameter_reg[0], (uintptr_t) rv);
+#endif
+}
+
+void emit_jit_mmio_escape(struct jit_state *state, int rv_insn_type)
+{
+#if defined(__x86_64__)
+    emit1(state, 0x0f);
+    emit1(state, 0x84);
+
+    /* pre-calculated jump offset */
+    switch (rv_insn_type) {
+    case rv_insn_sb:
+    case rv_insn_sh:
+        emit4(state, 0x1c);
+        break;
+    case rv_insn_sw:
+        emit4(state, 0x1b);
+        break;
+    case rv_insn_lb:
+    case rv_insn_lh:
+    case rv_insn_lbu:
+    case rv_insn_lhu:
+        emit4(state, 0x16);
+        break;
+    case rv_insn_lw:
+        emit4(state, 0x15);
+        break;
+    default:
+        assert(NULL);
+        __UNREACHABLE;
+    }
+#endif
+}
+#endif
+
 static void prepare_translate(struct jit_state *state)
 {
 #if defined(__x86_64__)
@@ -1734,7 +1868,9 @@ static void ra_load2_sext(struct jit_state *state,
     }
 }
 
-void parse_branch_history_table(struct jit_state *state, rv_insn_t *ir)
+void parse_branch_history_table(struct jit_state *state,
+                                riscv_t *rv,
+                                rv_insn_t *ir)
 {
     int max_idx = 0;
     branch_history_table_t *bt = ir->branch_table;
@@ -1745,14 +1881,17 @@ void parse_branch_history_table(struct jit_state *state, rv_insn_t *ir)
             max_idx = i;
     }
     if (bt->PC[max_idx] && bt->times[max_idx] >= IN_JUMP_THRESHOLD) {
-        save_reg(state, 0);
-        unmap_vm_reg(0);
-        emit_load_imm(state, register_map[0].reg_idx, bt->PC[max_idx]);
-        emit_cmp32(state, temp_reg, register_map[0].reg_idx);
-        uint32_t jump_loc = state->offset;
-        emit_jcc_offset(state, 0x85);
-        emit_jmp(state, bt->PC[max_idx]);
-        emit_jump_target_offset(state, JUMP_LOC, state->offset);
+        IIF(RV32_HAS(SYSTEM))(if (bt->satp[max_idx] == rv->csr_satp), )
+        {
+            save_reg(state, 0);
+            unmap_vm_reg(0);
+            emit_load_imm(state, register_map[0].reg_idx, bt->PC[max_idx]);
+            emit_cmp32(state, temp_reg, register_map[0].reg_idx);
+            uint32_t jump_loc = state->offset;
+            emit_jcc_offset(state, 0x85);
+            emit_jmp(state, bt->PC[max_idx]);
+            emit_jump_target_offset(state, JUMP_LOC, state->offset);
+        }
     }
 }
 
@@ -1948,14 +2087,20 @@ static void translate_chained_block(struct jit_state *state,
     if (ir->branch_untaken && !set_has(&state->set, ir->branch_untaken->pc)) {
         block_t *block1 =
             cache_get(rv->block_cache, ir->branch_untaken->pc, false);
-        if (block1->translatable)
-            translate_chained_block(state, rv, block1);
+        if (block1->translatable) {
+            IIF(RV32_HAS(SYSTEM))
+            (if (block1->satp == rv->csr_satp), )
+                translate_chained_block(state, rv, block1);
+        }
     }
     if (ir->branch_taken && !set_has(&state->set, ir->branch_taken->pc)) {
         block_t *block1 =
             cache_get(rv->block_cache, ir->branch_taken->pc, false);
-        if (block1->translatable)
-            translate_chained_block(state, rv, block1);
+        if (block1->translatable) {
+            IIF(RV32_HAS(SYSTEM))
+            (if (block1->satp == rv->csr_satp), )
+                translate_chained_block(state, rv, block1);
+        }
     }
     branch_history_table_t *bt = ir->branch_table;
     if (bt) {
@@ -1968,10 +2113,16 @@ static void translate_chained_block(struct jit_state *state,
         }
         if (bt->PC[max_idx] && bt->times[max_idx] >= IN_JUMP_THRESHOLD &&
             !set_has(&state->set, bt->PC[max_idx])) {
-            block_t *block1 =
-                cache_get(rv->block_cache, bt->PC[max_idx], false);
-            if (block1 && block1->translatable)
-                translate_chained_block(state, rv, block1);
+            IIF(RV32_HAS(SYSTEM))(if (bt->satp[max_idx] == rv->csr_satp), )
+            {
+                block_t *block1 =
+                    cache_get(rv->block_cache, bt->PC[max_idx], false);
+                if (block1 && block1->translatable) {
+                    IIF(RV32_HAS(SYSTEM))
+                    (if (block1->satp == rv->csr_satp), )
+                        translate_chained_block(state, rv, block1);
+                }
+            }
         }
     }
 }

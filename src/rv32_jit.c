@@ -28,7 +28,7 @@ GEN(jalr, {
         emit_load_imm(state, vm_reg[1], ir->pc + 4);
     }
     store_back(state);
-    parse_branch_history_table(state, ir);
+    parse_branch_history_table(state, rv, ir);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -155,66 +155,326 @@ GEN(bgeu, {
 GEN(lb, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = map_vm_reg(state, ir->rd);
-    emit_load_sext(state, S8, temp_reg, vm_reg[1], 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_lb);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rd);
+            /* clear register mapping */
+            reset_reg();
+
+            /* skip memory operation if it's MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_lb);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load_sext(state, S8, temp_reg, vm_reg[1], 0);
+            if (rv->jit_mmu.is_mmio) {
+                unmap_vm_reg(vm_reg[0]);
+            }
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load_sext(state, S8, temp_reg, vm_reg[1], 0);
+        })
 })
 GEN(lh, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = map_vm_reg(state, ir->rd);
-    emit_load_sext(state, S16, temp_reg, vm_reg[1], 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_lh);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rd);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_lh);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load_sext(state, S16, temp_reg, vm_reg[1], 0);
+            if (rv->jit_mmu.is_mmio) {
+                unmap_vm_reg(vm_reg[0]);
+            }
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load_sext(state, S16, temp_reg, vm_reg[1], 0);
+        })
 })
 GEN(lw, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = map_vm_reg(state, ir->rd);
-    emit_load(state, S32, temp_reg, vm_reg[1], 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_lw);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rd);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_lw);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load(state, S32, temp_reg, vm_reg[1], 0);
+            if (rv->jit_mmu.is_mmio) {
+                unmap_vm_reg(vm_reg[0]);
+            }
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load(state, S32, temp_reg, vm_reg[1], 0);
+        })
 })
 GEN(lbu, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = map_vm_reg(state, ir->rd);
-    emit_load(state, S8, temp_reg, vm_reg[1], 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_lbu);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rd);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_lbu);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load(state, S8, temp_reg, vm_reg[1], 0);
+            if (rv->jit_mmu.is_mmio) {
+                unmap_vm_reg(vm_reg[0]);
+            }
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load(state, S8, temp_reg, vm_reg[1], 0);
+        })
 })
 GEN(lhu, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = map_vm_reg(state, ir->rd);
-    emit_load(state, S16, temp_reg, vm_reg[1], 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_lhu);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rd);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_lhu);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load(state, S16, temp_reg, vm_reg[1], 0);
+            if (rv->jit_mmu.is_mmio) {
+                unmap_vm_reg(vm_reg[0]);
+            }
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = map_vm_reg(state, ir->rd);
+            emit_load(state, S16, temp_reg, vm_reg[1], 0);
+        })
 })
 GEN(sb, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = ra_load(state, ir->rs2);
-    emit_store(state, S8, vm_reg[1], temp_reg, 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_sb);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rs2);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_sb);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = ra_load(state, ir->rs2);
+            emit_store(state, S8, vm_reg[1], temp_reg, 0);
+            if (rv->jit_mmu.is_mmio) {
+                unmap_vm_reg(vm_reg[0]);
+            }
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = ra_load(state, ir->rs2);
+            emit_store(state, S8, vm_reg[1], temp_reg, 0);
+        })
 })
 GEN(sh, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = ra_load(state, ir->rs2);
-    emit_store(state, S16, vm_reg[1], temp_reg, 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_sh);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rs2);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_sh);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = ra_load(state, ir->rs2);
+            emit_store(state, S16, vm_reg[1], temp_reg, 0);
+            if (rv->jit_mmu.is_mmio)
+                reset_reg();
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = ra_load(state, ir->rs2);
+            emit_store(state, S16, vm_reg[1], temp_reg, 0);
+        })
 })
 GEN(sw, {
     memory_t *m = PRIV(rv)->mem;
     vm_reg[0] = ra_load(state, ir->rs1);
-    emit_load_imm(state, temp_reg, (intptr_t) (m->mem_base + ir->imm));
-    emit_alu64(state, 0x01, vm_reg[0], temp_reg);
-    vm_reg[1] = ra_load(state, ir->rs2);
-    emit_store(state, S32, vm_reg[1], temp_reg, 0);
+    IIF(RV32_HAS(SYSTEM))
+    (
+        {
+            emit_load_imm(state, temp_reg, ir->imm);
+            emit_alu32(state, 0x01, vm_reg[0], temp_reg);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.vaddr));
+            emit_load_imm(state, temp_reg, rv_insn_sw);
+            emit_store(state, S32, temp_reg, parameter_reg[0],
+                       offsetof(riscv_t, jit_mmu.type));
+            store_back(state);
+            emit_jit_mmu_handler(state, rv, ir->rs2);
+            reset_reg();
+
+            /* jump if is MMIO */
+            emit_load(state, S32, parameter_reg[0], temp_reg,
+                      offsetof(riscv_t, jit_mmu.is_mmio));
+            emit_cmp_imm32(state, temp_reg, 1);
+            emit_jit_mmio_escape(state, rv_insn_sw);
+
+            emit_load(state, S32, parameter_reg[0], vm_reg[0],
+                      offsetof(riscv_t, jit_mmu.paddr));
+            emit_load_imm(state, temp_reg, (uintptr_t) m->mem_base);
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = ra_load(state, ir->rs2);
+            emit_store(state, S32, vm_reg[1], temp_reg, 0);
+            if (rv->jit_mmu.is_mmio)
+                reset_reg();
+        },
+        {
+            emit_load_imm(state, temp_reg, (uintptr_t) (m->mem_base + ir->imm));
+            emit_alu64(state, 0x01, vm_reg[0], temp_reg);
+            vm_reg[1] = ra_load(state, ir->rs2);
+            emit_store(state, S32, vm_reg[1], temp_reg, 0);
+        })
 })
 GEN(addi, {
     vm_reg[0] = ra_load(state, ir->rs1);
@@ -648,7 +908,7 @@ GEN(cjr, {
     vm_reg[0] = ra_load(state, ir->rs1);
     emit_mov(state, vm_reg[0], temp_reg);
     store_back(state);
-    parse_branch_history_table(state, ir);
+    parse_branch_history_table(state, rv, ir);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -674,7 +934,7 @@ GEN(cjalr, {
     vm_reg[1] = map_vm_reg(state, rv_reg_ra);
     emit_load_imm(state, vm_reg[1], ir->pc + 2);
     store_back(state);
-    parse_branch_history_table(state, ir);
+    parse_branch_history_table(state, rv, ir);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
