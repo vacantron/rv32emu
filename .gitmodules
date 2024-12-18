@@ -31,3 +31,8 @@
 	path = tests/quake
 	url = https://github.com/sysprog21/quake-embedded
 	shallow = true
+[submodule "src/jit-framework"]
+	path = src/jit-framework
+	url = https://github.com/sysprog21/jit-framework.git
+	branch = dev
+	shallow = true

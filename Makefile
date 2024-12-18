@@ -161,33 +161,46 @@ ENABLE_JIT ?= 0
 $(call set-feature, JIT)
 ifeq ($(call has, JIT), 1)
     OBJS_EXT += jit.o
-    ENABLE_T2C ?= 1
-    $(call set-feature, T2C)
-    ifeq ($(call has, T2C), 1)
+    ENABLE_T2C_IR ?= 1
+    $(call set-feature, T2C_IR)
+    ifeq ($(call has, T2C_IR), 1)
         # tier-2 JIT compiler is powered by LLVM
-        LLVM_CONFIG = llvm-config-18
-        LLVM_CONFIG := $(shell which $(LLVM_CONFIG))
-        ifndef LLVM_CONFIG
-            # Try Homebrew on macOS
-            LLVM_CONFIG = /opt/homebrew/opt/llvm@18/bin/llvm-config
+        OBJS_EXT += t2c.o
+        CFLAGS += -g -I./src/jit-framework
+        LDFLAGS += -L./src/jit-framework -lir -ldl
+        ENABLE_T2C := 1
+        $(call set-feature, T2C)
+    else
+        ENABLE_T2C_LLVM ?= 1
+        $(call set-feature, T2C_LLVM)
+        ifeq ($(call has, T2C_LLVM), 1)
+            # tier-2 JIT compiler is powered by LLVM
+            LLVM_CONFIG = llvm-config-18
             LLVM_CONFIG := $(shell which $(LLVM_CONFIG))
-            ifdef LLVM_CONFIG
-                LDFLAGS += -L/opt/homebrew/opt/llvm@18/lib
+            ifndef LLVM_CONFIG
+                # Try Homebrew on macOS
+                LLVM_CONFIG = /opt/homebrew/opt/llvm@18/bin/llvm-config
+                LLVM_CONFIG := $(shell which $(LLVM_CONFIG))
+                ifdef LLVM_CONFIG
+                    LDFLAGS += -L/opt/homebrew/opt/llvm@18/lib
+                endif
             endif
-        endif
-        ifeq ("$(LLVM_CONFIG)", "")
-            $(error No llvm-config-18 installed. Check llvm-config-18 installation in advance, or use "ENABLE_T2C=0" to disable tier-2 LLVM compiler)
-        endif
-        ifeq ("$(findstring -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS, "$(shell $(LLVM_CONFIG) --cflags)")", "")
-            $(error No llvm-config-18 installed. Check llvm-config-18 installation in advance, or use "ENABLE_T2C=0" to disable tier-2 LLVM compiler)
-        endif
-        CHECK_LLVM_LIBS := $(shell $(LLVM_CONFIG) --libs 2>/dev/null 1>&2; echo $$?)
-        ifeq ("$(CHECK_LLVM_LIBS)", "0")
-            OBJS_EXT += t2c.o
-            CFLAGS += -g $(shell $(LLVM_CONFIG) --cflags)
-            LDFLAGS += $(shell $(LLVM_CONFIG) --libs)
-        else
-            $(error No llvm-config-18 installed. Check llvm-config-18 installation in advance, or use "ENABLE_T2C=0" to disable tier-2 LLVM compiler)
+            ifeq ("$(LLVM_CONFIG)", "")
+                $(error No llvm-config-18 installed. Check llvm-config-18 installation in advance, or use "ENABLE_T2C_LLVM=0" to disable tier-2 LLVM compiler)
+            endif
+            ifeq ("$(findstring -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS, "$(shell $(LLVM_CONFIG) --cflags)")", "")
+                $(error No llvm-config-18 installed. Check llvm-config-18 installation in advance, or use "ENABLE_T2C_LLVM=0" to disable tier-2 LLVM compiler)
+            endif
+            CHECK_LLVM_LIBS := $(shell $(LLVM_CONFIG) --libs 2>/dev/null 1>&2; echo $$?)
+            ifeq ("$(CHECK_LLVM_LIBS)", "0")
+                OBJS_EXT += t2c.o
+                CFLAGS += -g $(shell $(LLVM_CONFIG) --cflags)
+                LDFLAGS += $(shell $(LLVM_CONFIG) --libs)
+            else
+                $(error No llvm-config-18 installed. Check llvm-config-18 installation in advance, or use "ENABLE_T2C_LLVM=0" to disable tier-2 LLVM compiler)
+            endif
+            NABLE_T2C := 1
+            $(call set-feature, T2C)
         endif
     endif
     ifneq ($(processor),$(filter $(processor),x86_64 aarch64 arm64))
@@ -201,9 +214,17 @@ $(OUT)/jit.o: src/jit.c src/rv32_jit.c
 	$(VECHO) "  CC\t$@\n"
 	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
 
+ifeq ($(call has, T2C_IR), 1)
+$(OUT)/t2c.o: src/t2c_ir.c
+	git submodule update --init src/jit-framework
+	$(MAKE) -C src/jit-framework
+	$(VECHO) "  CC\t$@\n"
+	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
+else ifeq ($(call has, T2C_LLVM), 1)
 $(OUT)/t2c.o: src/t2c.c src/t2c_template.c
 	$(VECHO) "  CC\t$@\n"
 	$(Q)$(CC) -o $@ $(CFLAGS) -c -MMD -MF $@.d $<
+endif
 endif
 # For tail-call elimination, we need a specific set of build flags applied.
 # FIXME: On macOS + Apple Silicon, -fno-stack-protector might have a negative impact.
