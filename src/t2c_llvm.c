@@ -147,10 +147,12 @@ static const void *dispatch_table[] = {
     [rv_insn_##inst] = t2c_##inst,
     RV_INSN_LIST
 #undef _
+#if RV32_HAS(MOP_FUSION)
 /* Macro operation fusion instructions */
 #define _(inst) [rv_insn_##inst] = t2c_##inst,
         FUSE_INSN_LIST
 #undef _
+#endif
 };
 
 FORCE_INLINE bool t2c_insn_is_terminal(uint8_t opcode)

@@ -1513,6 +1513,7 @@ static inline void liveness_calc(block_t *block)
             liveness[ir->rs2] = idx;
             break;
 #endif
+#if RV32_HAS(MOP_FUSION)
         case rv_insn_fuse1:
             for (int i = 0; i < ir->imm2; i++) {
                 liveness[ir->fuse[i].rd] = idx;
@@ -1533,6 +1534,7 @@ static inline void liveness_calc(block_t *block)
                 liveness[ir->fuse[i].rs1] = idx;
             }
             break;
+#endif
         default:
             __UNREACHABLE;
         }
@@ -1765,6 +1767,7 @@ void parse_branch_history_table(struct jit_state *state, rv_insn_t *ir)
 #include "rv32_jit.c"
 #undef GEN
 
+#if RV32_HAS(MOP_FUSION)
 static void do_fuse1(struct jit_state *state, riscv_t *rv UNUSED, rv_insn_t *ir)
 {
     opcode_fuse_t *fuse = ir->fuse;
@@ -1843,6 +1846,7 @@ static void do_fuse5(struct jit_state *state, riscv_t *rv UNUSED, rv_insn_t *ir)
         }
     }
 }
+#endif
 
 /* clang-format off */
 static const void *dispatch_table[] = {
@@ -1850,10 +1854,12 @@ static const void *dispatch_table[] = {
 #define _(inst, can_branch, insn_len, translatable, reg_mask) [rv_insn_##inst] = do_##inst,
     RV_INSN_LIST
 #undef _
+#if RV32_HAS(MOP_FUSION)
     /* Macro operation fusion instructions */
 #define _(inst) [rv_insn_##inst] = do_##inst,
     FUSE_INSN_LIST
 #undef _
+#endif
 };
 /* clang-format on */
 

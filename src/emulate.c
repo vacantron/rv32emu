@@ -403,6 +403,7 @@ static uint32_t peripheral_update_ctr = 64;
 #include "rv32_template.c"
 #undef RVOP
 
+#if RV32_HAS(MOP_FUSION)
 /* multiple LUI */
 static bool do_fuse1(riscv_t *rv, rv_insn_t *ir, uint64_t cycle, uint32_t PC)
 {
@@ -503,6 +504,7 @@ static bool do_fuse5(riscv_t *rv,
     const rv_insn_t *next = ir->next;
     MUST_TAIL return next->impl(rv, next, cycle, PC);
 }
+#endif
 
 /* clang-format off */
 static const void *dispatch_table[] = {
@@ -510,10 +512,12 @@ static const void *dispatch_table[] = {
 #define _(inst, can_branch, insn_len, translatable, reg_mask) [rv_insn_##inst] = do_##inst,
     RV_INSN_LIST
 #undef _
+#if RV32_HAS(MOP_FUSION)
     /* Macro operation fusion instructions */
 #define _(inst) [rv_insn_##inst] = do_##inst,
     FUSE_INSN_LIST
 #undef _
+#endif
 };
 /* clang-format on */
 
@@ -698,6 +702,7 @@ static inline void remove_next_nth_ir(const riscv_t *rv,
     block->n_insn -= n;
 }
 
+#if RV32_HAS(MOP_FUSION)
 /* Check if instructions in a block match a specific pattern. If they do,
  * rewrite them as fused instructions.
  *
@@ -795,6 +800,7 @@ static void match_pattern(riscv_t *rv, block_t *block)
         }
     }
 }
+#endif
 
 typedef struct {
     bool is_constant[N_RV_REGS];

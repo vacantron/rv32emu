@@ -741,9 +741,11 @@ static const char *insn_name_table[] = {
     [rv_insn_##inst] = #inst,
     RV_INSN_LIST
 #undef _
+#if RV32_HAS(MOP_FUSION)
 #define _(inst) [rv_insn_##inst] = #inst,
         FUSE_INSN_LIST
 #undef _
+#endif
 };
 
 #if RV32_HAS(JIT)

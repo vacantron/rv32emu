@@ -211,9 +211,11 @@ enum {
     RV_INSN_LIST
 #undef _
     N_RV_INSNS,
+#if RV32_HAS(MOP_FUSION)
 #define _(inst) rv_insn_##inst,
     FUSE_INSN_LIST
 #undef _
+#endif
 };
 /* clang-format on */
 
