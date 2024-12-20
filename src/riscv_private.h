@@ -92,6 +92,12 @@ typedef struct block {
     bool has_loops;   /**< Determine the block has loop or not */
 #if RV32_HAS(T2C)
     bool compiled; /**< The T2C request is enqueued or not */
+#if RV32_HAS(T2C_IR)
+    uint32_t proc_cnt;
+    bool t2c_has_loop;
+    bool t2_need_merge;
+    struct block *t2c_visited_by;
+#endif
 #endif
     uint32_t offset;   /**< The machine code offset in T1 code cache */
     uint32_t n_invoke; /**< The invoking times of T1 machine code */
