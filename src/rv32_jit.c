@@ -1,20 +1,25 @@
 GEN(nop, {})
-GEN(lui, {
-    vm_reg[0] = map_vm_reg(state, ir->rd);
-    emit_load_imm(state, vm_reg[0], ir->imm);
-})
+static void do_lui(struct jit_state *state __attribute__((unused)),
+                   riscv_t *rv __attribute__((unused)),
+                   rv_insn_t *ir __attribute__((unused)))
+{
+    {
+        vm_reg[0] = map_vm_reg(state, ir->rd);
+        emit_load_uimm(state, vm_reg[0], ir->imm);
+    };
+}
 GEN(auipc, {
     vm_reg[0] = map_vm_reg(state, ir->rd);
-    emit_load_imm(state, vm_reg[0], ir->pc + ir->imm);
+    emit_load_uimm(state, vm_reg[0], ir->pc + ir->imm);
 })
 GEN(jal, {
     if (ir->rd) {
         vm_reg[0] = map_vm_reg(state, ir->rd);
-        emit_load_imm(state, vm_reg[0], ir->pc + 4);
+        emit_load_uimm(state, vm_reg[0], ir->pc + 4);
     }
     store_back(state);
     emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -25,7 +30,7 @@ GEN(jalr, {
     emit_alu32_imm32(state, 0x81, 4, temp_reg, ~1U);
     if (ir->rd) {
         vm_reg[1] = map_vm_reg(state, ir->rd);
-        emit_load_imm(state, vm_reg[1], ir->pc + 4);
+        emit_load_uimm(state, vm_reg[1], ir->pc + 4);
     }
     store_back(state);
     parse_branch_history_table(state, rv, ir);
@@ -41,14 +46,14 @@ GEN(beq, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 4, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 4);
+    emit_load_uimm(state, temp_reg, ir->pc + 4);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -61,14 +66,14 @@ GEN(bne, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 4, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 4);
+    emit_load_uimm(state, temp_reg, ir->pc + 4);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -81,14 +86,14 @@ GEN(blt, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 4, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 4);
+    emit_load_uimm(state, temp_reg, ir->pc + 4);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -101,14 +106,14 @@ GEN(bge, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 4, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 4);
+    emit_load_uimm(state, temp_reg, ir->pc + 4);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -121,14 +126,14 @@ GEN(bltu, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 4, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 4);
+    emit_load_uimm(state, temp_reg, ir->pc + 4);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -141,14 +146,14 @@ GEN(bgeu, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 4, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 4);
+    emit_load_uimm(state, temp_reg, ir->pc + 4);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -674,14 +679,14 @@ GEN(and, {
 GEN(fence, { assert(NULL); })
 GEN(ecall, {
     store_back(state);
-    emit_load_imm(state, temp_reg, ir->pc);
+    emit_load_uimm(state, temp_reg, ir->pc);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_call(state, (intptr_t) rv->io.on_ecall);
     emit_exit(state);
 })
 GEN(ebreak, {
     store_back(state);
-    emit_load_imm(state, temp_reg, ir->pc);
+    emit_load_uimm(state, temp_reg, ir->pc);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_call(state, (intptr_t) rv->io.on_ebreak);
     emit_exit(state);
@@ -839,10 +844,10 @@ GEN(caddi, {
 })
 GEN(cjal, {
     vm_reg[0] = map_vm_reg(state, rv_reg_ra);
-    emit_load_imm(state, vm_reg[0], ir->pc + 2);
+    emit_load_uimm(state, vm_reg[0], ir->pc + 2);
     store_back(state);
     emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -901,7 +906,7 @@ GEN(cand, {
 GEN(cj, {
     store_back(state);
     emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -914,14 +919,14 @@ GEN(cbeqz, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 2, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 2);
+    emit_load_uimm(state, temp_reg, ir->pc + 2);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -934,14 +939,14 @@ GEN(cbnez, {
     if (ir->branch_untaken) {
         emit_jmp(state, ir->pc + 2, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + 2);
+    emit_load_uimm(state, temp_reg, ir->pc + 2);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
     emit_jump_target_offset(state, JUMP_LOC, state->offset);
     if (ir->branch_taken) {
         emit_jmp(state, ir->pc + ir->imm, rv->csr_satp);
     }
-    emit_load_imm(state, temp_reg, ir->pc + ir->imm);
+    emit_load_uimm(state, temp_reg, ir->pc + ir->imm);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_exit(state);
 })
@@ -976,7 +981,7 @@ GEN(cmv, {
 })
 GEN(cebreak, {
     store_back(state);
-    emit_load_imm(state, temp_reg, ir->pc);
+    emit_load_uimm(state, temp_reg, ir->pc);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));
     emit_call(state, (intptr_t) rv->io.on_ebreak);
     emit_exit(state);
@@ -985,7 +990,7 @@ GEN(cjalr, {
     vm_reg[0] = ra_load(state, ir->rs1);
     emit_mov(state, vm_reg[0], temp_reg);
     vm_reg[1] = map_vm_reg(state, rv_reg_ra);
-    emit_load_imm(state, vm_reg[1], ir->pc + 2);
+    emit_load_uimm(state, vm_reg[1], ir->pc + 2);
     store_back(state);
     parse_branch_history_table(state, rv, ir);
     emit_store(state, S32, temp_reg, parameter_reg[0], offsetof(riscv_t, PC));

@@ -19,7 +19,7 @@ CONSTOPT(lui, {
  * instruction, then places the result in register rd.
  */
 CONSTOPT(auipc, {
-    ir->imm += ir->pc;
+    ir->imm = (uint32_t) ir->imm + ir->pc;
     info->is_constant[ir->rd] = true;
     info->const_val[ir->rd] = ir->imm;
     ir->opcode = rv_insn_lui;

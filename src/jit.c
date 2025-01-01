@@ -786,7 +786,7 @@ static inline void emit_alu64_imm32(struct jit_state *state,
 static inline void emit_cmp_imm32(struct jit_state *state, int dst, int32_t imm)
 {
 #if defined(__x86_64__)
-    emit_alu64_imm32(state, 0x81, 7, dst, imm);
+    emit_alu32_imm32(state, 0x81, 7, dst, imm);
 #elif defined(__aarch64__)
     emit_load_imm(state, R10, imm);
     emit_addsub_register(state, false, AS_SUBS, RZ, dst, R10);
@@ -836,6 +836,25 @@ static inline void emit_jcc_offset(struct jit_state *state, int code)
 #endif
 }
 
+static inline void emit_load_uimm(struct jit_state *state,
+                                  int dst,
+                                  uint32_t imm)
+{
+#if defined(__x86_64__)
+    if (dst & 8)
+        emit_basic_rex(state, 0, 0, dst);
+    emit1(state, 0xb8 | (dst & 0x7));
+    emit4(state, imm);
+
+    set_dirty(dst, true);
+#elif defined(__aarch64__)
+    if ((int32_t) imm == imm)
+        emit_movewide_imm(state, false, dst, imm);
+    else
+        emit_movewide_imm(state, true, dst, imm);
+#endif
+}
+
 /* Load [src + offset] into dst.
  *
  * If the offset is non-zero, it restores the vm register to the host register
@@ -849,6 +868,15 @@ static inline void emit_load(struct jit_state *state,
                              int32_t offset)
 {
 #if defined(__x86_64__)
+    for (int i = 0; i < n_host_regs; i++) {
+        if (register_map[i].reg_idx != dst)
+            continue;
+        if (register_map[i].vm_reg_idx == 0) {
+            emit_load_uimm(state, dst, 0x0);
+            goto emit_load_end;
+        }
+    }
+
     if (src & 8 || dst & 8)
         emit_basic_rex(state, 0, dst, src);
     if (size == S8 || size == S16) {
@@ -879,6 +907,7 @@ static inline void emit_load(struct jit_state *state,
     }
 #endif
 
+emit_load_end:
     set_dirty(dst, !offset);
 }
 
@@ -889,6 +918,15 @@ static inline void emit_load_sext(struct jit_state *state,
                                   int32_t offset)
 {
 #if defined(__x86_64__)
+    for (int i = 0; i < n_host_regs; i++) {
+        if (register_map[i].reg_idx != dst)
+            continue;
+        if (register_map[i].vm_reg_idx == 0) {
+            emit_load_uimm(state, dst, 0x0);
+            goto emit_load_sext_end;
+        }
+    }
+
     if (size == S8 || size == S16) {
         if (src & 8 || dst & 8)
             emit_basic_rex(state, 0, dst, src);
@@ -918,6 +956,7 @@ static inline void emit_load_sext(struct jit_state *state,
     }
 #endif
 
+emit_load_sext_end:
     set_dirty(dst, !offset);
 }
 
@@ -956,6 +995,36 @@ static inline void emit_store(struct jit_state *state,
                               int32_t offset)
 {
 #if defined(__x86_64__)
+    for (int i = 0; i < n_host_regs; i++) {
+        if (register_map[i].reg_idx != src)
+            continue;
+        if (register_map[i].vm_reg_idx == 0) {
+            if (size == S16)
+                emit1(state, 0x66); /* 16-bit override */
+            if (dst & 8)
+                emit_rex(state, 0, 0, 0, !!(dst & 8));
+            emit1(state, size == S8 ? 0xc6 : 0xc7);
+            emit1(state, 0x80 | (dst & 0x7));
+            emit4(state, offset);
+            switch (size) {
+            case S8:
+                emit1(state, 0x0);
+                break;
+            case S16:
+                emit1(state, 0x0);
+                emit1(state, 0x0);
+                break;
+            case S32:
+                emit4(state, 0x0);
+                break;
+            default:
+                assert(NULL);
+                __UNREACHABLE;
+            }
+            goto emit_store_end;
+        }
+    }
+
     if (size == S16)
         emit1(state, 0x66); /* 16-bit override */
     if (src & 8 || dst & 8 || size == S8)
@@ -979,6 +1048,7 @@ static inline void emit_store(struct jit_state *state,
     }
 #endif
 
+emit_store_end:
     if (offset)
         set_dirty(src, false);
 }
