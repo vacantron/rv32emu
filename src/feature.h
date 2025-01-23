@@ -108,5 +108,10 @@
 #define RV32_FEATURE_BLOCK_CHAINING 1
 #endif
 
+/* Architecture test */
+#ifndef RV32_FEATURE_ARCH_TEST
+#define RV32_FEATURE_ARCH_TEST 0
+#endif
+
 /* Feature test macro */
 #define RV32_HAS(x) RV32_FEATURE_##x

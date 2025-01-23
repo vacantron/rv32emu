@@ -2,7 +2,7 @@
 check_platform()
 {
     MACHINE_TYPE=`uname -m`
-    if [ ${MACHINE_TYPE} != 'x86_64' ]; then
+    if [ ${MACHINE_TYPE} != 'x86_64' ] && [ ${MACHINE_TYPE} != 'aarch64' ]; then
         exit 1
     fi
 
