@@ -242,7 +242,6 @@ jobs:
 
   host-arm64:
     needs: [detect-code-related-file-changes]
-    if: needs.detect-code-related-file-changes.outputs.has_code_related_changes == 'true'
     runs-on: ubuntu-24.04
     steps:
     - name: checkout code
