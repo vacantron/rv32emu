@@ -9,7 +9,7 @@ set -x
 
 export PATH=`pwd`/toolchain/bin:$PATH
 
-PARALLEL=-j$(nproc)
+PARALLEL=
 
 make distclean
 # Rebuild with all RISC-V extensions
