@@ -130,7 +130,10 @@ struct riscv_internal {
     riscv_word_t X[N_RV_REGS];
     riscv_word_t PC;
 
-#if RV32_HAS(JIT) && RV32_HAS(SYSTEM)
+#if RV32_HAS(SYSTEM)
+    uint64_t timer;
+#if RV32_HAS(JIT)
+#endif
     /*
      * Aarch64 encoder only accepts 9 bits signed offset. Do not put this
      * structure below the section.

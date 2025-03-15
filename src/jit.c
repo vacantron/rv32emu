@@ -2026,10 +2026,21 @@ void parse_branch_history_table(struct jit_state *state,
     }
 }
 
+void emit_jit_update_timer(struct jit_state *state)
+{
+    /* Increment rv->timer. *rv pointer is stored in RDI register */
+    /* INC RDI, offsetof(riscv_t, timer) */
+    emit_rex(state, 1, 0, 0, 0);
+    emit1(state, 0xff);
+    emit1(state, 0x87);
+    emit4(state, offsetof(riscv_t, timer));
+}
+
 #define GEN(inst, code)                                                       \
     static void do_##inst(struct jit_state *state UNUSED, riscv_t *rv UNUSED, \
                           rv_insn_t *ir UNUSED)                               \
     {                                                                         \
+        emit_jit_update_timer(state);                                         \
         code;                                                                 \
     }
 #include "rv32_jit.c"
