@@ -34,3 +34,6 @@
 	path = src/dtc
 	url = https://git.kernel.org/pub/scm/utils/dtc/dtc.git
 	shallow = true
+[submodule "src/ramulator2"]
+	path = src/ramulator2
+	url = https://github.com/vacantron/ramulator2.git
