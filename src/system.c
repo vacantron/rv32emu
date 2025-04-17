@@ -6,6 +6,8 @@
 #include <assert.h>
 
 #include "system.h"
+#include "ramulator2.h"
+#include "ramulator2/rv32emu_wrapper/rv32emu_wrapper.h"
 
 #if !RV32_HAS(ELF_LOADER)
 void emu_update_uart_interrupts(riscv_t *rv)
@@ -213,6 +215,7 @@ static uint32_t mmu_ifetch(riscv_t *rv, const uint32_t vaddr)
         return 0;
 
     get_ppn_and_offset();
+    ramulator_dispatch(ppn | offset, false);
     return memory_ifetch(ppn | offset);
 }
 
@@ -225,8 +228,10 @@ static uint32_t mmu_read_w(riscv_t *rv, const uint32_t vaddr)
         return 0;
 #endif
 
-    if (addr == vaddr || addr < PRIV(rv)->mem->mem_size)
+    if (addr == vaddr || addr < PRIV(rv)->mem->mem_size) {
+        ramulator_dispatch(addr, false);
         return memory_read_w(addr);
+    }
 
 #if RV32_HAS(SYSTEM) && !RV32_HAS(ELF_LOADER)
     MMIO_READ();
@@ -244,6 +249,7 @@ static uint16_t mmu_read_s(riscv_t *rv, const uint32_t vaddr)
         return 0;
 #endif
 
+    ramulator_dispatch(addr, false);
     return memory_read_s(addr);
 }
 
@@ -256,8 +262,10 @@ static uint8_t mmu_read_b(riscv_t *rv, const uint32_t vaddr)
         return 0;
 #endif
 
-    if (addr == vaddr || addr < PRIV(rv)->mem->mem_size)
+    if (addr == vaddr || addr < PRIV(rv)->mem->mem_size) {
+        ramulator_dispatch(addr, false);
         return memory_read_b(addr);
+    }
 
 #if RV32_HAS(SYSTEM) && !RV32_HAS(ELF_LOADER)
     MMIO_READ();
@@ -276,6 +284,7 @@ static void mmu_write_w(riscv_t *rv, const uint32_t vaddr, const uint32_t val)
 #endif
 
     if (addr == vaddr || addr < PRIV(rv)->mem->mem_size) {
+        ramulator_dispatch(addr, true);
         memory_write_w(addr, (uint8_t *) &val);
         return;
     }
@@ -297,6 +306,7 @@ static void mmu_write_s(riscv_t *rv, const uint32_t vaddr, const uint16_t val)
     if (addr == vaddr)
         return memory_write_s(addr, (uint8_t *) &val);
 
+    ramulator_dispatch(addr, true);
     memory_write_s(addr, (uint8_t *) &val);
 }
 
@@ -310,6 +320,7 @@ static void mmu_write_b(riscv_t *rv, const uint32_t vaddr, const uint8_t val)
 #endif
 
     if (addr == vaddr || addr < PRIV(rv)->mem->mem_size) {
+        ramulator_dispatch(addr, true);
         memory_write_b(addr, (uint8_t *) &val);
         return;
     }

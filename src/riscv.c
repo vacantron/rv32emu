@@ -44,6 +44,9 @@
 #include "jit.h"
 #define CODE_CACHE_SIZE (4 * 1024 * 1024)
 #endif
+#if RV32_HAS(SYSTEM) && !RV32_HAS(ELF_LOADER)
+#include "ramulator2.h"
+#endif
 
 #define BLOCK_IR_MAP_CAPACITY_BITS 10
 
@@ -540,6 +543,7 @@ riscv_t *rv_create(riscv_user_t rv_attr)
     attr->disk = virtio_blk_init(attr->vblk, attr->data.system.vblk_device);
 
     capture_keyboard_input();
+    ramulator_init();
 #endif /* !RV32_HAS(SYSTEM) || (RV32_HAS(SYSTEM) && RV32_HAS(ELF_LOADER)) */
 
     /* create block and IRs memory pool */
@@ -642,6 +646,7 @@ void rv_run(riscv_t *rv)
         assert(attr->profile_output_file);
         rv_profile(rv, attr->profile_output_file);
     }
+    ramulator_fin();
 }
 
 void rv_halt(riscv_t *rv)

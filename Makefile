@@ -39,7 +39,7 @@ ENABLE_SYSTEM ?= 0
 $(call set-feature, SYSTEM)
 
 ifeq ($(call has, SYSTEM), 1)
-    OBJS_EXT += system.o
+    OBJS_EXT += system.o ramulator2.o
 endif
 
 # Definition that bridges:
